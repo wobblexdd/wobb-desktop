@@ -391,10 +391,10 @@ export default function App() {
   const selectedLabel = selectedServer?.label || profile?.serverName || profile?.serverAddress || 'No server selected';
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <main className="mx-auto grid min-h-screen max-w-[1440px] grid-cols-[72px_320px_minmax(0,1fr)] gap-0 px-4 py-4">
-        <aside className="flex flex-col items-center rounded-l-xl border border-r-0 border-slate-800 bg-slate-925 px-3 py-4">
-          <div className="mb-6 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-sm font-semibold text-white">
+    <div className="min-h-screen bg-[#060d18] text-slate-100">
+      <main className="mx-auto grid min-h-screen max-w-[1460px] grid-cols-[76px_340px_minmax(0,1fr)] gap-0 px-4 py-4">
+        <aside className="flex flex-col items-center rounded-l-xl border border-r-0 border-slate-800 bg-[#091120] px-3 py-4">
+          <div className="mb-6 flex h-11 w-11 items-center justify-center rounded-lg bg-blue-600 text-sm font-semibold text-white">
             W
           </div>
           <div className="flex w-full flex-1 flex-col gap-2">
@@ -405,10 +405,10 @@ export default function App() {
           </div>
         </aside>
 
-        <aside ref={serversRef} className="flex min-h-0 flex-col rounded-none border border-r-0 border-slate-800 bg-slate-900/92">
+        <aside ref={serversRef} className="flex min-h-0 flex-col border border-r-0 border-slate-800 bg-[#0b1323]">
           <div className="border-b border-slate-800 px-5 py-5">
             <h1 className="text-lg font-semibold text-slate-50">Servers</h1>
-            <p className="mt-1 text-sm text-slate-400">Verify an access key and select a saved server profile.</p>
+            <p className="mt-1 text-sm text-slate-400">Verify an access key and keep recent profiles in one place.</p>
           </div>
 
           <div className="space-y-4 border-b border-slate-800 px-5 py-5">
@@ -450,7 +450,7 @@ export default function App() {
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
             {filteredServers.length === 0 ? (
               <div className="rounded-lg border border-dashed border-slate-800 px-4 py-6 text-sm text-slate-500">
-                No saved servers yet.
+                No saved profiles yet.
               </div>
             ) : (
               <div className="space-y-2">
@@ -465,7 +465,7 @@ export default function App() {
                       className={`w-full rounded-lg border px-4 py-3 text-left transition ${
                         selected
                           ? 'border-blue-500 bg-blue-500/10'
-                          : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                          : 'border-slate-800 bg-slate-950/40 hover:border-slate-700'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -485,36 +485,46 @@ export default function App() {
           </div>
         </aside>
 
-        <section className="min-h-0 overflow-y-auto rounded-r-xl border border-slate-800 bg-slate-950/96 px-6 py-6">
+        <section className="min-h-0 overflow-y-auto rounded-r-xl border border-slate-800 bg-[#050b15] px-6 py-6">
           <div className="space-y-6">
+            <header className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-blue-400">Wobb desktop</p>
+                <h2 className="mt-2 text-3xl font-semibold text-slate-50">Clean local access</h2>
+                <p className="mt-2 max-w-xl text-sm text-slate-400">
+                  Verify a profile, review the current runtime state, and connect without extra dashboard noise.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={`rounded-md border px-3 py-1.5 text-sm ${
+                  isConnected
+                    ? 'border-blue-500/30 bg-blue-500/10 text-blue-100'
+                    : 'border-slate-700 bg-slate-900 text-slate-300'
+                }`}>
+                  {connectionLabel}
+                </div>
+                <div className="rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm text-slate-300">
+                  {clientMode === 'proxy' ? 'Proxy' : 'TUN'}
+                </div>
+              </div>
+            </header>
+
             <SectionCard
               title="Connect"
-              description="Current selected server and connection action."
+              description="Selected server, active mode, and connection control."
               sectionRef={connectRef}
             >
-              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-start">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <div className={`rounded-md border px-3 py-1.5 text-sm ${
-                      isConnected
-                        ? 'border-blue-500/30 bg-blue-500/10 text-blue-100'
-                        : 'border-slate-700 bg-slate-900 text-slate-300'
-                    }`}>
-                      {connectionLabel}
-                    </div>
-                    <div className="rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm text-slate-300">
-                      {clientMode === 'proxy' ? 'Proxy' : 'TUN'}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-2xl font-semibold text-slate-50">{selectedLabel}</div>
-                    <div className="mt-1 text-sm text-slate-400">
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_220px]">
+                <div className="space-y-5">
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/45 p-5">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Selected server</div>
+                    <div className="mt-3 text-2xl font-semibold text-slate-50">{selectedLabel}</div>
+                    <div className="mt-2 text-sm text-slate-400">
                       {profile ? `${profile.serverAddress}:${profile.serverPort}` : 'Verify an access key to load a server profile.'}
                     </div>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3 md:grid-cols-3">
                     <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-4">
                       <div className="text-xs uppercase tracking-wide text-slate-500">Profile</div>
                       <div className="mt-2 text-sm text-slate-100">{profile?.serverName || 'Not loaded'}</div>
@@ -523,28 +533,42 @@ export default function App() {
                       <div className="text-xs uppercase tracking-wide text-slate-500">Endpoint</div>
                       <div className="mt-2 text-sm text-slate-100">{profile ? `${profile.serverAddress}:${profile.serverPort}` : 'Not loaded'}</div>
                     </div>
+                    <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-4">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Binary</div>
+                      <div className="mt-2 text-sm text-slate-100">{status.binaryPath || 'Not resolved yet'}</div>
+                    </div>
+                  </div>
+
+                  {message ? (
+                    <div className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-300">
+                      {message}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <button
+                    type="button"
+                    onClick={handleToggleConnection}
+                    disabled={loading || status.state === 'stopping'}
+                    className="h-12 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {connectLabel}
+                  </button>
+
+                  <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-4">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Runtime</div>
+                    <div className="mt-3 space-y-2 text-sm text-slate-300">
+                      <div>PID: {status.pid || 'Not running'}</div>
+                      <div>Config: {status.configPath || 'stdin:'}</div>
+                    </div>
                   </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleToggleConnection}
-                  disabled={loading || status.state === 'stopping'}
-                  className="h-12 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {connectLabel}
-                </button>
               </div>
-
-              {message ? (
-                <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-300">
-                  {message}
-                </div>
-              ) : null}
             </SectionCard>
 
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-              <SectionCard title="Plan" description="The current access key and expiry.">
+              <SectionCard title="Plan" description="Current access profile.">
                 <DetailRow label="Status" value={accessInfo?.status || 'Unknown'} />
                 <DetailRow label="Label" value={accessInfo?.title || 'Not loaded'} />
                 <DetailRow label="Notes" value={accessInfo?.note || 'None'} />
@@ -553,7 +577,7 @@ export default function App() {
 
               <SectionCard
                 title="Settings"
-                description="Available client modes and local runtime details."
+                description="Mode selection and local runtime details."
                 sectionRef={settingsRef}
               >
                 <div className="space-y-4">
@@ -576,7 +600,7 @@ export default function App() {
                   <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-4">
                     <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
                       <Shield className="h-4 w-4 text-blue-400" />
-                      Logs and runtime
+                      Local runtime
                     </div>
                     <div className="mt-3 space-y-2 text-sm text-slate-400">
                       <div>Binary: {status.binaryPath || 'Not resolved yet'}</div>
@@ -587,7 +611,7 @@ export default function App() {
               </SectionCard>
             </div>
 
-            <SectionCard title="Logs" description="Local desktop process logs." sectionRef={logsSectionRef}>
+            <SectionCard title="Logs" description="Desktop process logs." sectionRef={logsSectionRef}>
               <div
                 className="h-72 overflow-y-auto rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3"
                 ref={logsViewportRef}

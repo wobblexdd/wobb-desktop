@@ -20,7 +20,8 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  background: #020617;
+  background: #060d18;
+  color: #e5e7eb;
 }
 
 * {
@@ -28,7 +29,7 @@ body {
 }
 
 .bg-slate-925 {
-  background: #0b1220;
+  background: #091120;
 }
 
 .border-slate-850 {
@@ -41,10 +42,10 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: #0a1323;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 999px;
+  background: #243247;
+  border-radius: 8px;
 }
