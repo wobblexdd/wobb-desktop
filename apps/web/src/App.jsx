@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Power, ScrollText, Search, Server, Settings, Shield } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
 const VERIFY_ENDPOINT = `${API_BASE_URL}/api/v1/verify`;
 const PROFILE_CACHE_KEY = 'wobb.desktop.profile.v1';
+const SERVER_CACHE_KEY = 'wobb.desktop.servers.v1';
 
 const INITIAL_STATUS = {
   state: 'ready',
@@ -18,26 +20,13 @@ function statusLabel(state) {
     case 'starting':
       return 'Connecting';
     case 'protected':
-      return 'Connected';
     case 'bypassing-dpi':
-      return 'Connected (Stealth)';
+      return 'Connected';
     case 'stopping':
       return 'Disconnecting';
     default:
       return 'Disconnected';
   }
-}
-
-function statusTone(state) {
-  if (state === 'protected' || state === 'bypassing-dpi') {
-    return 'success';
-  }
-
-  if (state === 'starting' || state === 'stopping') {
-    return 'warning';
-  }
-
-  return 'neutral';
 }
 
 function readCachedProfile(accessKey) {
@@ -73,6 +62,44 @@ function writeCachedProfile(accessKey, payload) {
   } catch {
     // Ignore local cache failures.
   }
+}
+
+function readServerCache() {
+  try {
+    const raw = window.localStorage.getItem(SERVER_CACHE_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeServerCache(entry) {
+  try {
+    const current = readServerCache();
+    const filtered = current.filter((item) => item.id !== entry.id);
+    const next = [entry, ...filtered].slice(0, 10);
+    window.localStorage.setItem(SERVER_CACHE_KEY, JSON.stringify(next));
+    return next;
+  } catch {
+    return readServerCache();
+  }
+}
+
+function createServerEntry(accessKey, payload) {
+  return {
+    id: accessKey,
+    accessKey,
+    label: payload.access?.title || payload.profile.serverName || payload.profile.serverAddress,
+    note: payload.access?.note || '',
+    expiry: payload.expiry || null,
+    profile: payload.profile,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 async function verifyAccess(accessKey) {
@@ -145,26 +172,12 @@ function formatExpiry(value) {
   return date.toLocaleDateString('en-GB');
 }
 
-function toneClass(tone) {
-  switch (tone) {
-    case 'success':
-      return 'bg-emerald-500/12 text-emerald-200 border-emerald-400/20';
-    case 'warning':
-      return 'bg-amber-500/12 text-amber-200 border-amber-400/20';
-    default:
-      return 'bg-slate-700/50 text-slate-200 border-slate-600';
-  }
-}
-
-function Card({ title, description, children, aside }) {
+function SectionCard({ title, description, children, sectionRef }) {
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-900/80 p-5">
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-base font-semibold text-slate-100">{title}</h2>
-          {description ? <p className="mt-1 text-sm text-slate-400">{description}</p> : null}
-        </div>
-        {aside}
+    <section ref={sectionRef} className="rounded-lg border border-slate-800 bg-slate-900/88 p-5">
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-slate-100">{title}</h2>
+        {description ? <p className="mt-1 text-sm text-slate-400">{description}</p> : null}
       </div>
       {children}
     </section>
@@ -175,14 +188,30 @@ function DetailRow({ label, value }) {
   return (
     <div className="flex items-start justify-between gap-4 border-t border-slate-800 py-3 first:border-t-0 first:pt-0 last:pb-0">
       <span className="text-sm text-slate-400">{label}</span>
-      <span className="max-w-[60%] text-right text-sm text-slate-100">{value}</span>
+      <span className="max-w-[62%] text-right text-sm text-slate-100">{value}</span>
     </div>
+  );
+}
+
+function NavButton({ icon: Icon, label, onClick, active }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full flex-col items-center gap-2 rounded-lg px-2 py-3 text-xs font-medium transition ${
+        active ? 'bg-slate-800 text-slate-100' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+      <span>{label}</span>
+    </button>
   );
 }
 
 export default function App() {
   const [accessKey, setAccessKey] = useState('');
-  const [stealthMode, setStealthMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [clientMode] = useState('proxy');
   const [status, setStatus] = useState(INITIAL_STATUS);
   const [logs, setLogs] = useState([]);
   const [profile, setProfile] = useState(null);
@@ -190,17 +219,24 @@ export default function App() {
   const [expiry, setExpiry] = useState(null);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const logViewportRef = useRef(null);
+  const [savedServers, setSavedServers] = useState([]);
+  const [selectedServerId, setSelectedServerId] = useState(null);
+  const [activeNav, setActiveNav] = useState('connect');
 
-  const connectionTone = statusTone(status.state);
-  const connectLabel =
-    status.state === 'protected' || status.state === 'bypassing-dpi'
-      ? 'Disconnect'
-      : status.state === 'starting'
-        ? 'Connecting'
-        : status.state === 'stopping'
-          ? 'Disconnecting'
-          : 'Connect';
+  const logsSectionRef = useRef(null);
+  const logsViewportRef = useRef(null);
+  const connectRef = useRef(null);
+  const settingsRef = useRef(null);
+  const serversRef = useRef(null);
+
+  const connectionLabel = statusLabel(status.state);
+  const isConnected = status.state === 'protected' || status.state === 'bypassing-dpi';
+  const isBusy = status.state === 'starting' || status.state === 'stopping';
+  const connectLabel = isConnected ? 'Disconnect' : isBusy ? connectionLabel : 'Connect';
+
+  useEffect(() => {
+    setSavedServers(readServerCache());
+  }, []);
 
   useEffect(() => {
     if (!window.wobb) {
@@ -241,7 +277,7 @@ export default function App() {
   }, [status.error]);
 
   useEffect(() => {
-    const viewport = logViewportRef.current;
+    const viewport = logsViewportRef.current;
     if (!viewport) {
       return;
     }
@@ -249,13 +285,20 @@ export default function App() {
     viewport.scrollTop = viewport.scrollHeight;
   }, [logs]);
 
-  const profileSummary = useMemo(() => {
-    if (!profile) {
-      return 'No profile loaded';
+  const filteredServers = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return savedServers;
     }
 
-    return `${profile.serverAddress}:${profile.serverPort}`;
-  }, [profile]);
+    return savedServers.filter((item) => {
+      const haystack = [item.label, item.note, item.profile?.serverAddress, item.profile?.serverName]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [savedServers, searchQuery]);
 
   async function handleVerify() {
     setLoading(true);
@@ -263,15 +306,29 @@ export default function App() {
 
     try {
       const resolved = await verifyAccess(accessKey);
+      const entry = createServerEntry(accessKey.trim(), resolved);
+      const updatedServers = writeServerCache(entry);
+
+      setSavedServers(updatedServers);
+      setSelectedServerId(entry.id);
       setProfile(resolved.profile);
       setAccessInfo(resolved.access);
       setExpiry(resolved.expiry);
-      setMessage(resolved.fromCache ? 'Loaded cached profile because the backend is unreachable.' : 'Access key verified.');
+      setMessage(resolved.fromCache ? 'Loaded cached server profile.' : 'Server profile verified.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Access key verification failed.');
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleSelectServer(server) {
+    setSelectedServerId(server.id);
+    setAccessKey(server.accessKey || '');
+    setProfile(server.profile || null);
+    setAccessInfo(server.note || server.label ? { title: server.label, note: server.note, status: 'active' } : null);
+    setExpiry(server.expiry || null);
+    setMessage('');
   }
 
   async function handleToggleConnection() {
@@ -284,9 +341,9 @@ export default function App() {
     setMessage('');
 
     try {
-      if (status.state === 'protected' || status.state === 'bypassing-dpi' || status.state === 'starting') {
+      if (isConnected || status.state === 'starting') {
         await window.wobb.stop();
-        setMessage('Connection stopped.');
+        setMessage('Disconnected.');
         return;
       }
 
@@ -299,14 +356,20 @@ export default function App() {
         nextProfile = resolved.profile;
         nextAccess = resolved.access;
         nextExpiry = resolved.expiry;
-        setProfile(nextProfile);
-        setAccessInfo(nextAccess);
-        setExpiry(nextExpiry);
+
+        const entry = createServerEntry(accessKey.trim(), resolved);
+        const updatedServers = writeServerCache(entry);
+        setSavedServers(updatedServers);
+        setSelectedServerId(entry.id);
       }
+
+      setProfile(nextProfile);
+      setAccessInfo(nextAccess);
+      setExpiry(nextExpiry);
 
       await window.wobb.start({
         profile: nextProfile,
-        stealthMode,
+        stealthMode: false,
       });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Connection failed.');
@@ -315,115 +378,236 @@ export default function App() {
     }
   }
 
+  function handleUnavailableMode() {
+    setMessage('TUN mode is not available in this build.');
+  }
+
+  function scrollTo(ref, nav) {
+    setActiveNav(nav);
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  const selectedServer = savedServers.find((item) => item.id === selectedServerId) || null;
+  const selectedLabel = selectedServer?.label || profile?.serverName || profile?.serverAddress || 'No server selected';
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-6 py-8">
-        <header className="flex flex-col gap-3 border-b border-slate-800 pb-6 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-50">Wobb</h1>
-            <p className="mt-1 text-sm text-slate-400">Desktop connection utility</p>
+      <main className="mx-auto grid min-h-screen max-w-[1440px] grid-cols-[72px_320px_minmax(0,1fr)] gap-0 px-4 py-4">
+        <aside className="flex flex-col items-center rounded-l-xl border border-r-0 border-slate-800 bg-slate-925 px-3 py-4">
+          <div className="mb-6 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-sm font-semibold text-white">
+            W
           </div>
-          <div className={`inline-flex items-center rounded-md border px-3 py-1.5 text-sm font-medium ${toneClass(connectionTone)}`}>
-            {statusLabel(status.state)}
+          <div className="flex w-full flex-1 flex-col gap-2">
+            <NavButton icon={Server} label="Servers" onClick={() => scrollTo(serversRef, 'servers')} active={activeNav === 'servers'} />
+            <NavButton icon={Power} label="Connect" onClick={() => scrollTo(connectRef, 'connect')} active={activeNav === 'connect'} />
+            <NavButton icon={ScrollText} label="Logs" onClick={() => scrollTo(logsSectionRef, 'logs')} active={activeNav === 'logs'} />
+            <NavButton icon={Settings} label="Settings" onClick={() => scrollTo(settingsRef, 'settings')} active={activeNav === 'settings'} />
           </div>
-        </header>
+        </aside>
 
-        <section className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <div className="grid gap-6">
-            <Card title="Connection" description="Current engine state and connect control.">
-              <div className="space-y-4">
-                <div>
-                  <div className="text-3xl font-semibold text-slate-50">{statusLabel(status.state)}</div>
-                  <div className="mt-1 text-sm text-slate-400">{profileSummary}</div>
+        <aside ref={serversRef} className="flex min-h-0 flex-col rounded-none border border-r-0 border-slate-800 bg-slate-900/92">
+          <div className="border-b border-slate-800 px-5 py-5">
+            <h1 className="text-lg font-semibold text-slate-50">Servers</h1>
+            <p className="mt-1 text-sm text-slate-400">Verify an access key and select a saved server profile.</p>
+          </div>
+
+          <div className="space-y-4 border-b border-slate-800 px-5 py-5">
+            <label className="block">
+              <span className="mb-2 block text-sm text-slate-300">Access key</span>
+              <input
+                type="text"
+                value={accessKey}
+                onChange={(event) => setAccessKey(event.target.value)}
+                placeholder="Enter access key"
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-blue-500"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={handleVerify}
+              disabled={loading}
+              className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Verify
+            </button>
+
+            <label className="block">
+              <span className="mb-2 block text-sm text-slate-300">Search</span>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-3 text-sm text-slate-100 outline-none transition focus:border-blue-500"
+                />
+              </div>
+            </label>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+            {filteredServers.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-800 px-4 py-6 text-sm text-slate-500">
+                No saved servers yet.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredServers.map((server) => {
+                  const selected = server.id === selectedServerId;
+
+                  return (
+                    <button
+                      key={server.id}
+                      type="button"
+                      onClick={() => handleSelectServer(server)}
+                      className={`w-full rounded-lg border px-4 py-3 text-left transition ${
+                        selected
+                          ? 'border-blue-500 bg-blue-500/10'
+                          : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium text-slate-100">{server.label}</div>
+                          <div className="mt-1 text-xs text-slate-400">{server.profile.serverAddress}:{server.profile.serverPort}</div>
+                        </div>
+                        <div className="rounded-md bg-slate-900 px-2 py-1 text-[11px] text-slate-400">
+                          {server.profile.security || 'tls'}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <section className="min-h-0 overflow-y-auto rounded-r-xl border border-slate-800 bg-slate-950/96 px-6 py-6">
+          <div className="space-y-6">
+            <SectionCard
+              title="Connect"
+              description="Current selected server and connection action."
+              sectionRef={connectRef}
+            >
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-start">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className={`rounded-md border px-3 py-1.5 text-sm ${
+                      isConnected
+                        ? 'border-blue-500/30 bg-blue-500/10 text-blue-100'
+                        : 'border-slate-700 bg-slate-900 text-slate-300'
+                    }`}>
+                      {connectionLabel}
+                    </div>
+                    <div className="rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm text-slate-300">
+                      {clientMode === 'proxy' ? 'Proxy' : 'TUN'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-2xl font-semibold text-slate-50">{selectedLabel}</div>
+                    <div className="mt-1 text-sm text-slate-400">
+                      {profile ? `${profile.serverAddress}:${profile.serverPort}` : 'Verify an access key to load a server profile.'}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-4">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Profile</div>
+                      <div className="mt-2 text-sm text-slate-100">{profile?.serverName || 'Not loaded'}</div>
+                    </div>
+                    <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-4">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Endpoint</div>
+                      <div className="mt-2 text-sm text-slate-100">{profile ? `${profile.serverAddress}:${profile.serverPort}` : 'Not loaded'}</div>
+                    </div>
+                  </div>
                 </div>
 
                 <button
                   type="button"
                   onClick={handleToggleConnection}
                   disabled={loading || status.state === 'stopping'}
-                  className="w-full rounded-md bg-blue-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-12 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {connectLabel}
                 </button>
-
-                {message ? <div className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">{message}</div> : null}
               </div>
-            </Card>
 
-            <Card title="Access" description="Verify an access key before connecting.">
-              <div className="space-y-4">
-                <label className="block">
-                  <span className="mb-2 block text-sm text-slate-300">Access key</span>
-                  <input
-                    type="text"
-                    value={accessKey}
-                    onChange={(event) => setAccessKey(event.target.value)}
-                    placeholder="Enter access key"
-                    className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-blue-500"
-                  />
-                </label>
-
-                <label className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-950 px-3 py-3">
-                  <span className="text-sm text-slate-300">Stealth mode</span>
-                  <input
-                    type="checkbox"
-                    checked={stealthMode}
-                    onChange={(event) => setStealthMode(event.target.checked)}
-                    className="h-4 w-4 accent-blue-600"
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  onClick={handleVerify}
-                  disabled={loading}
-                  className="w-full rounded-md border border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Verify access
-                </button>
-              </div>
-            </Card>
-          </div>
-
-          <div className="grid gap-6">
-            <Card title="Profile" description="Resolved connection profile from the backend.">
-              {profile ? (
-                <div>
-                  <DetailRow label="Server" value={profile.serverAddress} />
-                  <DetailRow label="Port" value={String(profile.serverPort)} />
-                  <DetailRow label="Security" value={profile.security || 'tls'} />
-                  <DetailRow label="Server name" value={profile.serverName || '-'} />
-                  <DetailRow label="Mode" value={stealthMode ? 'Stealth' : 'Standard'} />
+              {message ? (
+                <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-300">
+                  {message}
                 </div>
-              ) : (
-                <p className="text-sm text-slate-400">No access key has been verified yet.</p>
-              )}
-            </Card>
+              ) : null}
+            </SectionCard>
 
-            <Card title="Plan" description="What the current access key provides.">
-              <div>
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+              <SectionCard title="Plan" description="The current access key and expiry.">
                 <DetailRow label="Status" value={accessInfo?.status || 'Unknown'} />
                 <DetailRow label="Label" value={accessInfo?.title || 'Not loaded'} />
                 <DetailRow label="Notes" value={accessInfo?.note || 'None'} />
                 <DetailRow label="Expiry" value={formatExpiry(expiry)} />
-              </div>
-            </Card>
+              </SectionCard>
 
-            <Card title="Diagnostics" description="Local desktop process logs.">
+              <SectionCard
+                title="Settings"
+                description="Available client modes and local runtime details."
+                sectionRef={settingsRef}
+              >
+                <div className="space-y-4">
+                  <div className="flex rounded-lg border border-slate-800 bg-slate-900 p-1">
+                    <button
+                      type="button"
+                      className="flex-1 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white"
+                    >
+                      Proxy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleUnavailableMode}
+                      className="flex-1 rounded-md px-3 py-2 text-sm text-slate-400"
+                    >
+                      TUN
+                    </button>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-4">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
+                      <Shield className="h-4 w-4 text-blue-400" />
+                      Logs and runtime
+                    </div>
+                    <div className="mt-3 space-y-2 text-sm text-slate-400">
+                      <div>Binary: {status.binaryPath || 'Not resolved yet'}</div>
+                      <div>PID: {status.pid || 'Not running'}</div>
+                    </div>
+                  </div>
+                </div>
+              </SectionCard>
+            </div>
+
+            <SectionCard title="Logs" description="Local desktop process logs." sectionRef={logsSectionRef}>
               <div
-                ref={logViewportRef}
-                className="h-72 overflow-y-auto rounded-md border border-slate-800 bg-slate-950 px-3 py-2"
+                className="h-72 overflow-y-auto rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3"
+                ref={logsViewportRef}
               >
                 {logs.length === 0 ? (
                   <div className="text-sm text-slate-500">No logs yet.</div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {logs.map((entry) => (
-                      <div key={entry.id} className="border-b border-slate-900 pb-2 last:border-b-0">
+                      <div key={entry.id} className="border-b border-slate-850 pb-3 last:border-b-0">
                         <div className="text-xs text-slate-500">
                           {entry.timestamp.slice(11, 19)} {entry.stream}
                         </div>
-                        <div className={`text-sm ${entry.level === 'error' ? 'text-rose-300' : entry.level === 'warn' ? 'text-amber-200' : 'text-slate-200'}`}>
+                        <div className={`mt-1 text-sm ${
+                          entry.level === 'error'
+                            ? 'text-rose-300'
+                            : entry.level === 'warn'
+                              ? 'text-slate-300'
+                              : 'text-slate-200'
+                        }`}>
                           {entry.message}
                         </div>
                       </div>
@@ -431,7 +615,7 @@ export default function App() {
                   </div>
                 )}
               </div>
-            </Card>
+            </SectionCard>
           </div>
         </section>
       </main>
