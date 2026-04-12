@@ -7,8 +7,8 @@
 html,
 body,
 #root {
-  margin: 0;
   min-height: 100%;
+  margin: 0;
 }
 
 body {
@@ -20,70 +20,7 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  background: #050816;
-}
-
-.matrix-console {
-  font-family:
-    "JetBrains Mono",
-    "Fira Code",
-    "SFMono-Regular",
-    Consolas,
-    "Liberation Mono",
-    monospace;
-}
-
-.boot-scan-line {
-  animation: boot-scan 1.5s ease-in-out infinite;
-}
-
-.toast-enter {
-  animation: toast-enter 220ms ease-out;
-}
-
-.wobb-breathe {
-  animation: wobb-breathe 2.8s ease-in-out infinite;
-}
-
-@keyframes boot-scan {
-  0% {
-    transform: translateY(-120%);
-    opacity: 0;
-  }
-
-  20% {
-    opacity: 1;
-  }
-
-  100% {
-    transform: translateY(560%);
-    opacity: 0;
-  }
-}
-
-@keyframes toast-enter {
-  0% {
-    opacity: 0;
-    transform: translateY(-8px) scale(0.98);
-  }
-
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes wobb-breathe {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.72;
-  }
-
-  50% {
-    transform: scale(1.03);
-    opacity: 1;
-  }
+  background: #020617;
 }
 
 * {
@@ -96,10 +33,10 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.65);
+  background: #0f172a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(103, 232, 249, 0.35);
+  background: #334155;
   border-radius: 999px;
 }

@@ -39,3 +39,5 @@ Expected local payloads:
    ```bash
    npm run dev
    ```
+
+The desktop renderer verifies access keys against `POST /api/v1/verify` on the backend and then launches the local desktop engine.

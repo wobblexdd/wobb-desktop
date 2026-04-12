@@ -17,11 +17,12 @@ const wobbState = {
 };
 
 function getRendererEntry() {
-  return path.join(app.getAppPath(), 'dist', 'apps', 'web', 'index.html');
+  const appPath = app?.getAppPath?.() || PROJECT_ROOT;
+  return path.join(appPath, 'dist', 'apps', 'web', 'index.html');
 }
 
 function getDesktopBinRoot() {
-  if (app.isPackaged) {
+  if (app?.isPackaged) {
     return path.join(path.dirname(process.execPath), 'bin');
   }
 
@@ -62,7 +63,6 @@ function pushLog(message, level = 'info', stream = 'system') {
 }
 
 const engine = new XrayManager({
-  binRoot: getDesktopBinRoot(),
   logger: {
     info: (message, ...args) => pushLog([message, ...args].join(' '), 'info', 'manager'),
     warn: (message, ...args) => pushLog([message, ...args].join(' '), 'warn', 'manager'),
@@ -111,11 +111,11 @@ function createWindow() {
   const isDev = !app.isPackaged;
 
   mainWindow = new BrowserWindow({
-    width: 1240,
-    height: 900,
+    width: 1180,
+    height: 820,
     minWidth: 980,
-    minHeight: 760,
-    backgroundColor: '#f5f7fb',
+    minHeight: 700,
+    backgroundColor: '#111827',
     title: 'Wobb',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -126,14 +126,26 @@ function createWindow() {
   });
 
   if (isDev) {
-    mainWindow.loadURL(DEV_SERVER_URL);
+    mainWindow.loadURL(DEV_SERVER_URL).catch((error) => {
+      pushLog(`Renderer failed to load: ${error.message}`, 'error', 'system');
+    });
   } else {
-    mainWindow.loadFile(getRendererEntry());
+    mainWindow.loadFile(getRendererEntry()).catch((error) => {
+      pushLog(`Renderer failed to load: ${error.message}`, 'error', 'system');
+    });
   }
 
-  if (isDev) {
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
-  }
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    pushLog(
+      `Renderer load failure (${errorCode}): ${errorDescription} ${validatedURL || ''}`.trim(),
+      'error',
+      'system'
+    );
+  });
 }
 
 ipcMain.handle('wobb:start', async (_event, payload = {}) => {
@@ -234,6 +246,7 @@ ipcMain.handle('wobb:get-status', async () => {
 });
 
 app.whenReady().then(() => {
+  engine.binRoot = getDesktopBinRoot();
   createWindow();
 
   app.on('activate', () => {

@@ -5,10 +5,10 @@
   "description": "WOBB desktop client",
   "main": "apps/desktop/main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "node scripts/start-electron.js",
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
     "dev:renderer": "vite --config apps/web/vite.config.js",
-    "dev:electron": "wait-on tcp:5173 && electron .",
+    "dev:electron": "wait-on tcp:5173 && node scripts/start-electron.js",
     "build:core-link": "node scripts/build-core-link.js",
     "build:renderer": "vite build --config apps/web/vite.config.js",
     "build": "npm run build:renderer && electron-builder"
