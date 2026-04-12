@@ -1,0 +1,36 @@
+{
+  "name": "wobb-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WOBB desktop client",
+  "main": "apps/desktop/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "dev:renderer": "vite --config apps/web/vite.config.js",
+    "dev:electron": "wait-on tcp:5173 && electron .",
+    "build:core-link": "node scripts/build-core-link.js",
+    "build:renderer": "vite build --config apps/web/vite.config.js",
+    "build": "npm run build:renderer && electron-builder"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.2.2",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.4.27",
+    "concurrently": "^9.2.1",
+    "electron": "^41.2.0",
+    "electron-builder": "^26.8.1",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.2",
+    "vite": "^8.0.4",
+    "wait-on": "^9.0.4"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.1",
+    "lucide-react": "^1.7.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  }
+}
