@@ -15,6 +15,54 @@ const INITIAL_STATUS = {
   error: null,
 };
 
+function isPlaceholderRuntimeValue(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    normalized.includes('example.com') ||
+    normalized.includes('replace-with-') ||
+    normalized.includes('your-google-') ||
+    normalized === 'change-me'
+  );
+}
+
+function validateResolvedProfile(profile) {
+  if (!profile || typeof profile !== 'object') {
+    throw new Error('Resolved profile is missing.');
+  }
+
+  const serverAddress = String(profile.serverAddress || '').trim();
+  const serverPort = Number(profile.serverPort);
+  const uuid = String(profile.uuid || '').trim();
+
+  if (!serverAddress || isPlaceholderRuntimeValue(serverAddress)) {
+    throw new Error('Resolved profile has an invalid server address.');
+  }
+
+  if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) {
+    throw new Error('Resolved profile has an invalid server port.');
+  }
+
+  if (!uuid) {
+    throw new Error('Resolved profile is missing a UUID.');
+  }
+
+  if (String(profile.security || '').toLowerCase() === 'reality') {
+    if (isPlaceholderRuntimeValue(profile.publicKey) || !String(profile.publicKey || '').trim()) {
+      throw new Error('Resolved profile is missing a REALITY public key.');
+    }
+
+    if (isPlaceholderRuntimeValue(profile.shortId) || !String(profile.shortId || '').trim()) {
+      throw new Error('Resolved profile is missing a REALITY short ID.');
+    }
+  }
+
+  return profile;
+}
+
 function statusLabel(state) {
   switch (state) {
     case 'starting':
@@ -41,6 +89,7 @@ function readCachedProfile(accessKey) {
       return null;
     }
 
+    validateResolvedProfile(parsed.profile);
     return parsed;
   } catch {
     return null;
@@ -72,7 +121,16 @@ function readServerCache() {
     }
 
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((entry) => {
+          try {
+            validateResolvedProfile(entry.profile);
+            return true;
+          } catch {
+            return false;
+          }
+        })
+      : [];
   } catch {
     return [];
   }
@@ -123,7 +181,7 @@ async function verifyAccess(accessKey) {
     }
 
     const resolved = {
-      profile: {
+      profile: validateResolvedProfile({
         serverAddress: payload.config.serverAddress,
         serverPort: Number(payload.config.port),
         uuid: payload.config.uuid,
@@ -134,7 +192,7 @@ async function verifyAccess(accessKey) {
         shortId: payload.config.shortId || '',
         spiderX: payload.config.spiderX || '/',
         flow: payload.config.flow || '',
-      },
+      }),
       access: payload.access || null,
       expiry: payload.expiry || null,
       fromCache: false,
