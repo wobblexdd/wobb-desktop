@@ -558,6 +558,26 @@ export default function App() {
     setActiveNav('profiles');
   }
 
+  async function handleCopyBootstrapCommands() {
+    if (!bootstrapPlan?.commandSnippets?.length) {
+      setMessage('No bootstrap commands are available yet.');
+      return;
+    }
+
+    await copyText(bootstrapPlan.commandSnippets.join('\n'));
+    setMessage('Bootstrap commands copied.');
+  }
+
+  async function handleCopyBootstrapSummary() {
+    if (!bootstrapPlan?.summary) {
+      setMessage('No ready profile summary is available yet.');
+      return;
+    }
+
+    await copyText([bootstrapPlan.summary, bootstrapPlan.shareLink || ''].filter(Boolean).join('\n\n'));
+    setMessage('Bootstrap profile summary copied.');
+  }
+
   async function handleCopyLogs() {
     if (!logs.length) {
       setMessage('No logs to copy.');
@@ -578,10 +598,10 @@ export default function App() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-blue-400">Wobb desktop</p>
-          <h2 className="mt-2 text-3xl font-semibold text-slate-50">Self-hosted client</h2>
+          <p className="text-sm font-medium text-blue-400">Wobb</p>
+          <h2 className="mt-2 text-3xl font-semibold text-slate-50">Self-hosted desktop client</h2>
           <p className="mt-2 max-w-xl text-sm text-slate-400">
-            Connect with your own VLESS and REALITY profile. Import, edit, export, and run locally.
+            Save profiles locally, validate them before connect, and keep runtime status readable while you test your own server.
           </p>
         </div>
         <div className={`rounded-md border px-3 py-1.5 text-sm ${statusBadgeClass(status.state)}`}>{connectionLabel}</div>
@@ -665,8 +685,8 @@ export default function App() {
       <div className="space-y-6">
         <header>
           <p className="text-sm font-medium text-blue-400">Profiles</p>
-          <h2 className="mt-2 text-3xl font-semibold text-slate-50">Local profile editor</h2>
-          <p className="mt-2 max-w-xl text-sm text-slate-400">Save and edit self-hosted connection profiles locally on this machine.</p>
+          <h2 className="mt-2 text-3xl font-semibold text-slate-50">Profile editor</h2>
+          <p className="mt-2 max-w-xl text-sm text-slate-400">Keep one clean local source of truth for each server you manage.</p>
         </header>
 
         <section className="rounded-lg border border-slate-800 bg-slate-900/88 p-5">
@@ -710,8 +730,8 @@ export default function App() {
     <div className="space-y-6">
       <header>
         <p className="text-sm font-medium text-blue-400">Import</p>
-        <h2 className="mt-2 text-3xl font-semibold text-slate-50">Paste VLESS URI or JSON</h2>
-        <p className="mt-2 max-w-xl text-sm text-slate-400">Import a VLESS REALITY share link, a profile JSON object, or an Xray config with a VLESS outbound.</p>
+        <h2 className="mt-2 text-3xl font-semibold text-slate-50">Bring in an existing profile</h2>
+        <p className="mt-2 max-w-xl text-sm text-slate-400">Paste a share link or JSON object, review the parsed draft, then save it locally before connect.</p>
       </header>
 
       <section className="rounded-lg border border-slate-800 bg-slate-900/88 p-5">
@@ -719,7 +739,22 @@ export default function App() {
         <div className="mt-5 flex flex-wrap gap-3">
           <button type="button" onClick={handleImportClipboard} className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-700">Paste clipboard</button>
           <button type="button" onClick={() => setMessage('QR import is reserved for the camera pass.')} className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-700">QR import</button>
-          <button type="button" onClick={handleImportText} className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500">Import draft</button>
+          <button type="button" onClick={handleImportText} className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500">Open draft</button>
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300">
+          <div className="text-xs uppercase tracking-wide text-slate-500">VLESS URI</div>
+          <div className="mt-2 text-slate-400">Best when you already have a share link from your own panel or script.</div>
+        </div>
+        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300">
+          <div className="text-xs uppercase tracking-wide text-slate-500">JSON import</div>
+          <div className="mt-2 text-slate-400">Useful when the profile came from another Xray tool or exported config.</div>
+        </div>
+        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300">
+          <div className="text-xs uppercase tracking-wide text-slate-500">QR import</div>
+          <div className="mt-2 text-slate-400">The entry point is in place now so camera support can land later without changing the profile model.</div>
         </div>
       </section>
     </div>
@@ -729,8 +764,8 @@ export default function App() {
     <div className="space-y-6">
       <header>
         <p className="text-sm font-medium text-blue-400">Bootstrap</p>
-        <h2 className="mt-2 text-3xl font-semibold text-slate-50">VPS setup helper</h2>
-        <p className="mt-2 max-w-xl text-sm text-slate-400">Generate a manual setup plan and turn the result into a ready profile when the REALITY values are known.</p>
+        <h2 className="mt-2 text-3xl font-semibold text-slate-50">Bootstrap planner</h2>
+        <p className="mt-2 max-w-xl text-sm text-slate-400">Prepare a clean rollout plan for your VPS, then turn the result into a local profile when the final REALITY values are known.</p>
       </header>
 
       <section className="rounded-lg border border-slate-800 bg-slate-900/88 p-5">
@@ -761,7 +796,7 @@ export default function App() {
 
       {bootstrapPlan ? (
         <section className="rounded-lg border border-slate-800 bg-slate-900/88 p-5">
-          <h2 className="mb-4 text-base font-semibold text-slate-100">Plan result</h2>
+          <h2 className="mb-4 text-base font-semibold text-slate-100">Generated plan</h2>
           <DetailRow label="Profile ready" value={bootstrapPlan.profileReady ? 'Yes' : 'No'} />
           <DetailRow label="Missing fields" value={bootstrapPlan.missingFields?.length ? bootstrapPlan.missingFields.join(', ') : 'None'} />
           <div className="mt-4 space-y-2 text-sm text-slate-200">
@@ -770,7 +805,9 @@ export default function App() {
             ))}
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
-            <button type="button" onClick={handleUseBootstrapDraft} className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-700">{bootstrapPlan.profileReady ? 'Import ready profile' : 'Open draft profile'}</button>
+            <button type="button" onClick={handleUseBootstrapDraft} className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-700">{bootstrapPlan.profileReady ? 'Use ready profile' : 'Open draft profile'}</button>
+            <button type="button" onClick={handleCopyBootstrapCommands} className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-700">Copy commands</button>
+            {bootstrapPlan.summary ? <button type="button" onClick={handleCopyBootstrapSummary} className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-700">Copy summary</button> : null}
           </div>
         </section>
       ) : null}
@@ -788,7 +825,7 @@ export default function App() {
       </div>
       <div className="h-96 overflow-y-auto rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3">
         {logs.length === 0 ? (
-          <div className="text-sm text-slate-500">No logs yet.</div>
+          <div className="text-sm text-slate-500">No runtime logs yet. Connect once to start building a local history.</div>
         ) : (
           <div className="space-y-3">
             {logs.map((entry) => (
@@ -810,7 +847,7 @@ export default function App() {
       <DetailRow label="Profiles" value={String(profiles.length)} />
       <DetailRow label="Selected mode" value={activeProfile ? (activeProfile.mode === 'vpn' ? 'VPN' : 'Proxy') : 'Not selected'} />
       <DetailRow label="Binary path" value={status.binaryPath || 'Not resolved yet'} />
-      <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/45 p-4 text-sm text-slate-400">The core flow is local profile based. The helper API is optional and only used for bootstrap planning.</div>
+      <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/45 p-4 text-sm text-slate-400">The main product flow is local and profile-based. The helper API is optional and only used for bootstrap planning.</div>
     </section>
   );
 
@@ -849,7 +886,7 @@ export default function App() {
         <aside className="flex min-h-0 flex-col border border-r-0 border-slate-800 bg-[#0b1323]">
           <div className="border-b border-slate-800 px-5 py-5">
             <h1 className="text-lg font-semibold text-slate-50">Profiles</h1>
-            <p className="mt-1 text-sm text-slate-400">Local self-hosted servers saved on this machine.</p>
+            <p className="mt-1 text-sm text-slate-400">Profiles saved locally on this machine.</p>
           </div>
 
           <div className="space-y-4 border-b border-slate-800 px-5 py-5">
@@ -866,7 +903,7 @@ export default function App() {
 
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
             {filteredProfiles.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-slate-800 px-4 py-6 text-sm text-slate-500">No local profiles yet.</div>
+              <div className="rounded-lg border border-dashed border-slate-800 px-4 py-6 text-sm text-slate-500">No local profiles yet. Add one manually, paste a VLESS URI, or use the bootstrap planner.</div>
             ) : (
               <div className="space-y-2">
                 {filteredProfiles.map((profile) => {
