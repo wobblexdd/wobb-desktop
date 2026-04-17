@@ -1,12 +1,12 @@
 # WOBB Desktop
 
-Public Electron desktop client for WOBB.
+Electron client for self-hosted VLESS / REALITY access.
 
-## Contents
+## Current flow
 
-- Electron main process
-- React renderer
-- Desktop runtime checks
+- save local profiles
+- connect and disconnect with the selected profile
+- optionally request a VPS bootstrap plan from the helper backend
 
 ## Requirements
 
@@ -26,7 +26,7 @@ Expected local payloads:
    npm install
    ```
 
-2. Copy `configs/.env.example` to `configs/.env` and set `VITE_API_URL`.
+2. Copy `configs/.env.example` to `configs/.env` and set `VITE_API_URL` only if you want the optional helper backend for bootstrap planning.
 
 3. Verify the local engine payload:
 
@@ -39,5 +39,3 @@ Expected local payloads:
    ```bash
    npm run dev
    ```
-
-The desktop renderer verifies access keys against `POST /api/v1/verify` on the backend and then launches the local desktop engine.

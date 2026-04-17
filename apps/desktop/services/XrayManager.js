@@ -85,6 +85,32 @@ class XrayManager extends EventEmitter {
       wsHost,
     } = options;
 
+    if (!String(serverAddress || '').trim()) {
+      throw new Error('Wobb profile is missing a server address.');
+    }
+
+    if (!String(uuid || '').trim()) {
+      throw new Error('Wobb profile is missing a UUID.');
+    }
+
+    if (!Number.isInteger(Number(serverPort)) || Number(serverPort) < 1 || Number(serverPort) > 65535) {
+      throw new Error('Wobb profile has an invalid server port.');
+    }
+
+    if (security === 'reality') {
+      if (!String(serverName || '').trim()) {
+        throw new Error('Wobb profile is missing a REALITY server name.');
+      }
+
+      if (!String(publicKey || '').trim()) {
+        throw new Error('Wobb profile is missing a REALITY public key.');
+      }
+
+      if (!String(shortId || '').trim()) {
+        throw new Error('Wobb profile is missing a REALITY short ID.');
+      }
+    }
+
     const streamSettings = {
       network,
       security,
@@ -538,3 +564,4 @@ class XrayManager extends EventEmitter {
 module.exports = {
   XrayManager,
 };
+
