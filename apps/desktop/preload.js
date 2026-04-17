@@ -10,6 +10,12 @@ contextBridge.exposeInMainWorld('wobb', {
   getStatus() {
     return ipcRenderer.invoke('wobb:get-status');
   },
+  copyText(text) {
+    return ipcRenderer.invoke('wobb:copy-text', text);
+  },
+  readText() {
+    return ipcRenderer.invoke('wobb:read-text');
+  },
   onStatusChange(callback) {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('wobb:status', listener);

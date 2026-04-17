@@ -1,4 +1,5 @@
 const PROFILE_MODES = ['vpn', 'proxy'];
+const BOOTSTRAP_AUTH_METHODS = ['private_key', 'password'];
 
 function nowIso() {
   return new Date().toISOString();
@@ -12,6 +13,14 @@ export function generateUuid() {
   });
 }
 
+export function normalizeMode(value) {
+  return value === 'vpn' ? 'vpn' : 'proxy';
+}
+
+export function normalizeBootstrapAuthMethod(value) {
+  return value === 'password' ? 'password' : 'private_key';
+}
+
 export function isPlaceholderValue(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (!normalized) {
@@ -22,7 +31,9 @@ export function isPlaceholderValue(value) {
     normalized.includes('example.com') ||
     normalized.includes('replace-with-') ||
     normalized.includes('your-') ||
-    normalized === 'change-me'
+    normalized === 'change-me' ||
+    normalized === 'test-public-key' ||
+    normalized === 'test-short-id'
   );
 }
 
@@ -43,6 +54,9 @@ export function createEmptyProfile(overrides = {}) {
     flow: overrides.flow || 'xtls-rprx-vision',
     remarks: overrides.remarks || '',
     mode: PROFILE_MODES.includes(overrides.mode) ? overrides.mode : 'proxy',
+    isFavorite: Boolean(overrides.isFavorite),
+    lastUsedAt: overrides.lastUsedAt || null,
+    lastConnectionResult: overrides.lastConnectionResult || null,
     createdAt: overrides.createdAt || timestamp,
     updatedAt: overrides.updatedAt || timestamp,
   };
@@ -62,6 +76,7 @@ export function createEmptyBootstrapDraft() {
     sshHost: '',
     sshPort: '22',
     sshUser: 'root',
+    authMethod: 'private_key',
     uuid: '',
     publicKey: '',
     shortId: '',
@@ -71,6 +86,7 @@ export function createEmptyBootstrapDraft() {
 
 export function validateProfile(profile) {
   const errors = [];
+  const fieldErrors = {};
   const name = String(profile?.name || '').trim();
   const serverAddress = String(profile?.serverAddress || '').trim();
   const serverName = String(profile?.serverName || '').trim();
@@ -80,34 +96,40 @@ export function validateProfile(profile) {
   const fingerprint = String(profile?.fingerprint || '').trim();
   const serverPort = Number(profile?.serverPort);
 
+  function push(field, message) {
+    errors.push(message);
+    fieldErrors[field] = message;
+  }
+
   if (!name) {
-    errors.push('Profile name is required.');
+    push('name', 'Profile name is required.');
   }
   if (!serverAddress || isPlaceholderValue(serverAddress)) {
-    errors.push('Server address is required.');
+    push('serverAddress', 'Server address is required.');
   }
   if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) {
-    errors.push('Server port must be between 1 and 65535.');
+    push('serverPort', 'Server port must be between 1 and 65535.');
   }
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid)) {
-    errors.push('UUID must be a valid v4 UUID.');
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid)) {
+    push('uuid', 'UUID must be a valid UUID.');
   }
   if (!serverName || isPlaceholderValue(serverName)) {
-    errors.push('Server name is required.');
+    push('serverName', 'Server name is required.');
   }
   if (!publicKey || isPlaceholderValue(publicKey)) {
-    errors.push('REALITY public key is required.');
+    push('publicKey', 'REALITY public key is required.');
   }
   if (!shortId || isPlaceholderValue(shortId)) {
-    errors.push('REALITY short ID is required.');
+    push('shortId', 'REALITY short ID is required.');
   }
   if (!fingerprint) {
-    errors.push('Fingerprint is required.');
+    push('fingerprint', 'Fingerprint is required.');
   }
 
   return {
     valid: errors.length === 0,
     errors,
+    fieldErrors,
   };
 }
 
@@ -127,6 +149,10 @@ export function normalizeProfile(input) {
     flow: String(input.flow || '').trim() || 'xtls-rprx-vision',
     remarks: String(input.remarks || '').trim(),
     mode: PROFILE_MODES.includes(input.mode) ? input.mode : 'proxy',
+    isFavorite: Boolean(input.isFavorite),
+    lastUsedAt: input.lastUsedAt || null,
+    lastConnectionResult: input.lastConnectionResult || null,
+    createdAt: input.createdAt || nowIso(),
     updatedAt: nowIso(),
   });
 
@@ -136,6 +162,48 @@ export function normalizeProfile(input) {
   }
 
   return next;
+}
+
+export function duplicateProfile(profile) {
+  return createEmptyProfile({
+    ...profile,
+    id: generateUuid(),
+    name: `${profile.name} Copy`.trim(),
+    isFavorite: false,
+    lastUsedAt: null,
+    lastConnectionResult: null,
+  });
+}
+
+export function touchProfileUsage(profile, result) {
+  return createEmptyProfile({
+    ...profile,
+    lastUsedAt: nowIso(),
+    lastConnectionResult: result,
+    updatedAt: nowIso(),
+  });
+}
+
+export function sortProfiles(profiles) {
+  return [...profiles].sort((left, right) => {
+    if (left.isFavorite !== right.isFavorite) {
+      return left.isFavorite ? -1 : 1;
+    }
+
+    const leftLastUsed = left.lastUsedAt ? Date.parse(left.lastUsedAt) : 0;
+    const rightLastUsed = right.lastUsedAt ? Date.parse(right.lastUsedAt) : 0;
+    if (leftLastUsed !== rightLastUsed) {
+      return rightLastUsed - leftLastUsed;
+    }
+
+    const leftUpdated = left.updatedAt ? Date.parse(left.updatedAt) : 0;
+    const rightUpdated = right.updatedAt ? Date.parse(right.updatedAt) : 0;
+    if (leftUpdated !== rightUpdated) {
+      return rightUpdated - leftUpdated;
+    }
+
+    return String(left.name || '').localeCompare(String(right.name || ''));
+  });
 }
 
 export function createShareLink(profile) {
@@ -148,12 +216,126 @@ export function createShareLink(profile) {
     ['fp', normalized.fingerprint],
     ['sni', normalized.serverName],
     ['spx', normalized.spiderX],
-    ['flow', normalized.flow],
-  ]
+  ];
+
+  if (normalized.flow) {
+    params.push(['flow', normalized.flow]);
+  }
+
+  const query = params
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
     .join('&');
 
-  return `vless://${normalized.uuid}@${normalized.serverAddress}:${normalized.serverPort}?${params}#${encodeURIComponent(normalized.name)}`;
+  return `vless://${normalized.uuid}@${normalized.serverAddress}:${normalized.serverPort}?${query}#${encodeURIComponent(normalized.name)}`;
+}
+
+export function createProfileSummary(profile) {
+  const normalized = normalizeProfile(profile);
+  return [
+    `Name: ${normalized.name}`,
+    `Endpoint: ${normalized.serverAddress}:${normalized.serverPort}`,
+    `Mode: ${normalized.mode === 'vpn' ? 'VPN' : 'Proxy'}`,
+    `Server Name: ${normalized.serverName}`,
+    `Public Key: ${normalized.publicKey}`,
+    `Short ID: ${normalized.shortId}`,
+    `Fingerprint: ${normalized.fingerprint}`,
+    normalized.flow ? `Flow: ${normalized.flow}` : null,
+    normalized.remarks ? `Remarks: ${normalized.remarks}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+export function parseVlessUri(input) {
+  const trimmed = String(input || '').trim();
+  if (!trimmed.toLowerCase().startsWith('vless://')) {
+    throw new Error('Import supports VLESS URIs only.');
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error('The VLESS URI is invalid.');
+  }
+
+  const security = parsed.searchParams.get('security');
+  if (security && security.toLowerCase() !== 'reality') {
+    throw new Error('Only VLESS REALITY profiles are supported.');
+  }
+
+  return normalizeProfile({
+    name: decodeURIComponent(parsed.hash.replace(/^#/, '') || 'Imported profile'),
+    serverAddress: parsed.hostname,
+    serverPort: parsed.port || '443',
+    uuid: decodeURIComponent(parsed.username || '').trim(),
+    serverName: parsed.searchParams.get('sni') || parsed.searchParams.get('serverName') || '',
+    publicKey: parsed.searchParams.get('pbk') || parsed.searchParams.get('publicKey') || '',
+    shortId: parsed.searchParams.get('sid') || parsed.searchParams.get('shortId') || '',
+    fingerprint: parsed.searchParams.get('fp') || 'chrome',
+    spiderX: parsed.searchParams.get('spx') || '/',
+    flow: parsed.searchParams.get('flow') || 'xtls-rprx-vision',
+    remarks: 'Imported from VLESS URI',
+    mode: 'proxy',
+  });
+}
+
+function parseJsonProfile(input) {
+  let parsed;
+  try {
+    parsed = JSON.parse(input);
+  } catch {
+    throw new Error('Import text is neither valid VLESS URI nor JSON.');
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Imported JSON must describe a profile object.');
+  }
+
+  if (parsed.profile && typeof parsed.profile === 'object') {
+    return normalizeProfile(parsed.profile);
+  }
+
+  if (Array.isArray(parsed.outbounds)) {
+    const outbound = parsed.outbounds.find((entry) => entry && typeof entry === 'object' && entry.protocol === 'vless');
+    if (!outbound) {
+      throw new Error('No VLESS outbound was found in the imported JSON.');
+    }
+
+    const vnext = Array.isArray(outbound.settings?.vnext) ? outbound.settings.vnext[0] : null;
+    const user = Array.isArray(vnext?.users) ? vnext.users[0] : null;
+    const realitySettings = outbound.streamSettings?.realitySettings || {};
+
+    return normalizeProfile({
+      name: String(parsed.remarks || 'Imported profile').trim(),
+      serverAddress: String(vnext?.address || '').trim(),
+      serverPort: String(vnext?.port || '').trim(),
+      uuid: String(user?.id || '').trim(),
+      serverName: String(realitySettings.serverName || '').trim(),
+      publicKey: String(realitySettings.publicKey || '').trim(),
+      shortId: String(realitySettings.shortId || '').trim(),
+      fingerprint: String(realitySettings.fingerprint || 'chrome').trim() || 'chrome',
+      spiderX: String(realitySettings.spiderX || '/').trim() || '/',
+      flow: String(user?.flow || 'xtls-rprx-vision').trim() || 'xtls-rprx-vision',
+      remarks: 'Imported from Xray JSON',
+      mode: 'proxy',
+    });
+  }
+
+  return normalizeProfile(parsed);
+}
+
+export function parseProfileImport(input) {
+  const trimmed = String(input || '').trim();
+  if (!trimmed) {
+    throw new Error('Paste a VLESS URI or JSON profile first.');
+  }
+
+  if (trimmed.toLowerCase().startsWith('vless://')) {
+    return parseVlessUri(trimmed);
+  }
+
+  return parseJsonProfile(trimmed);
 }
 
 export function endpointLabel(profile) {
@@ -174,5 +356,10 @@ export function bootstrapDraftToProfile(draft = {}) {
     flow: String(draft.flow || 'xtls-rprx-vision').trim() || 'xtls-rprx-vision',
     remarks: String(draft.remarks || '').trim(),
     mode: PROFILE_MODES.includes(draft.mode) ? draft.mode : 'proxy',
+    isFavorite: Boolean(draft.isFavorite),
+    lastUsedAt: draft.lastUsedAt || null,
+    lastConnectionResult: draft.lastConnectionResult || null,
   });
 }
+
+export { BOOTSTRAP_AUTH_METHODS, PROFILE_MODES };

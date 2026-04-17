@@ -1,22 +1,27 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Power, ScrollText, Server, Settings, Share2, Trash2, Wrench } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   bootstrapDraftToProfile,
   createEmptyBootstrapDraft,
   createEmptyProfile,
+  createProfileSummary,
   createShareLink,
+  duplicateProfile,
   endpointLabel,
   generateUuid,
+  normalizeBootstrapAuthMethod,
   normalizeProfile,
+  parseProfileImport,
+  sortProfiles,
+  touchProfileUsage,
   validateProfile,
 } from './profileUtils';
 
 const HELPER_API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
-const PROFILES_KEY = 'wobb.desktop.selfhosted.profiles.v1';
-const ACTIVE_PROFILE_KEY = 'wobb.desktop.selfhosted.active-profile.v1';
+const PROFILES_KEY = 'wobb.desktop.selfhosted.profiles.v2';
+const ACTIVE_PROFILE_KEY = 'wobb.desktop.selfhosted.active-profile.v2';
 
 const INITIAL_STATUS = {
-  state: 'ready',
+  state: 'idle',
   pid: null,
   binaryPath: null,
   configPath: 'stdin:',
@@ -26,16 +31,30 @@ const INITIAL_STATUS = {
 
 function statusLabel(state) {
   switch (state) {
-    case 'starting':
+    case 'connecting':
       return 'Connecting';
-    case 'protected':
-    case 'bypassing-dpi':
+    case 'connected':
       return 'Connected';
-    case 'stopping':
+    case 'disconnecting':
       return 'Disconnecting';
+    case 'error':
+      return 'Error';
     default:
       return 'Disconnected';
   }
+}
+
+function statusBadgeClass(state) {
+  if (state === 'connected') {
+    return 'border-blue-500/30 bg-blue-500/10 text-blue-100';
+  }
+  if (state === 'error') {
+    return 'border-rose-500/30 bg-rose-500/10 text-rose-200';
+  }
+  if (state === 'connecting' || state === 'disconnecting') {
+    return 'border-amber-500/30 bg-amber-500/10 text-amber-100';
+  }
+  return 'border-slate-700 bg-slate-900 text-slate-300';
 }
 
 function readProfiles() {
@@ -46,14 +65,14 @@ function readProfiles() {
     }
 
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? sortProfiles(parsed.map((entry) => createEmptyProfile(entry))) : [];
   } catch {
     return [];
   }
 }
 
 function writeProfiles(profiles) {
-  window.localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
+  window.localStorage.setItem(PROFILES_KEY, JSON.stringify(sortProfiles(profiles)));
 }
 
 function readActiveProfileId() {
@@ -69,6 +88,32 @@ function writeActiveProfileId(profileId) {
   window.localStorage.removeItem(ACTIVE_PROFILE_KEY);
 }
 
+async function copyText(text) {
+  if (window.wobb?.copyText) {
+    await window.wobb.copyText(text);
+    return true;
+  }
+
+  if (window.navigator?.clipboard?.writeText) {
+    await window.navigator.clipboard.writeText(text);
+    return true;
+  }
+
+  return false;
+}
+
+async function readClipboardText() {
+  if (window.wobb?.readText) {
+    return window.wobb.readText();
+  }
+
+  if (window.navigator?.clipboard?.readText) {
+    return window.navigator.clipboard.readText();
+  }
+
+  return '';
+}
+
 async function helperRequest(path, init) {
   const response = await fetch(`${HELPER_API_URL}${path}`, init);
   const payload = await response.json();
@@ -77,6 +122,33 @@ async function helperRequest(path, init) {
   }
 
   return payload;
+}
+
+function formatRelativeTime(timestamp) {
+  if (!timestamp) {
+    return 'Never used';
+  }
+
+  const delta = Date.now() - Date.parse(timestamp);
+  if (Number.isNaN(delta) || delta < 0) {
+    return 'Updated';
+  }
+
+  const minutes = Math.floor(delta / 60000);
+  if (minutes < 1) {
+    return 'Used just now';
+  }
+  if (minutes < 60) {
+    return `Used ${minutes}m ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `Used ${hours}h ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return `Used ${days}d ago`;
 }
 
 function DetailRow({ label, value }) {
@@ -88,17 +160,16 @@ function DetailRow({ label, value }) {
   );
 }
 
-function NavButton({ icon: Icon, label, active, onClick }) {
+function NavButton({ label, active, onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full flex-col items-center gap-2 rounded-lg px-2 py-3 text-xs font-medium transition ${
+      className={`w-full rounded-lg px-3 py-3 text-left text-sm font-medium transition ${
         active ? 'bg-slate-800 text-slate-100' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
       }`}
     >
-      <Icon className="h-4 w-4" />
-      <span>{label}</span>
+      {label}
     </button>
   );
 }
@@ -119,21 +190,21 @@ function Field({ label, value, onChange, placeholder, multiline = false }) {
   );
 }
 
-function ModeToggle({ value, onChange }) {
+function SegmentedToggle({ value, onChange, options }) {
   return (
     <div className="flex rounded-lg border border-slate-800 bg-slate-900 p-1">
-      {['proxy', 'vpn'].map((mode) => {
-        const selected = value === mode;
+      {options.map((option) => {
+        const selected = value === option.value;
         return (
           <button
-            key={mode}
+            key={option.value}
             type="button"
-            onClick={() => onChange(mode)}
+            onClick={() => onChange(option.value)}
             className={`flex-1 rounded-md px-3 py-2 text-sm transition ${
               selected ? 'bg-blue-600 font-medium text-white' : 'text-slate-400'
             }`}
           >
-            {mode === 'proxy' ? 'Proxy' : 'VPN'}
+            {option.label}
           </button>
         );
       })}
@@ -152,14 +223,15 @@ export default function App() {
   const [activeProfileId, setActiveProfileId] = useState(null);
   const [draftProfile, setDraftProfile] = useState(createEmptyProfile());
   const [editingProfileId, setEditingProfileId] = useState(null);
+  const [importText, setImportText] = useState('');
   const [bootstrapDraft, setBootstrapDraft] = useState(createEmptyBootstrapDraft());
   const [bootstrapPlan, setBootstrapPlan] = useState(null);
   const [bootstrapBusy, setBootstrapBusy] = useState(false);
+  const activeProfileIdRef = useRef(null);
 
-  const connectionLabel = statusLabel(status.state);
-  const isConnected = status.state === 'protected' || status.state === 'bypassing-dpi';
-  const isBusy = status.state === 'starting' || status.state === 'stopping';
-  const connectLabel = isConnected ? 'Disconnect' : isBusy ? connectionLabel : 'Connect';
+  useEffect(() => {
+    activeProfileIdRef.current = activeProfileId;
+  }, [activeProfileId]);
 
   const activeProfile = useMemo(
     () => profiles.find((profile) => profile.id === activeProfileId) || null,
@@ -172,10 +244,10 @@ export default function App() {
   const filteredProfiles = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) {
-      return profiles;
+      return sortProfiles(profiles);
     }
 
-    return profiles.filter((profile) => {
+    return sortProfiles(profiles).filter((profile) => {
       const haystack = [profile.name, profile.serverAddress, profile.serverName, profile.remarks]
         .filter(Boolean)
         .join(' ')
@@ -184,9 +256,41 @@ export default function App() {
     });
   }, [profiles, searchQuery]);
 
+  const connectionLabel = statusLabel(status.state);
+  const isConnected = status.state === 'connected';
+  const isBusy = status.state === 'connecting' || status.state === 'disconnecting';
+  const connectLabel = isConnected ? 'Disconnect' : isBusy ? connectionLabel : 'Connect';
+
+  function persistProfiles(nextProfiles, nextActiveProfileId) {
+    const sorted = sortProfiles(nextProfiles.map((profile) => createEmptyProfile(profile)));
+    setProfiles(sorted);
+    setActiveProfileId(nextActiveProfileId);
+    writeProfiles(sorted);
+    writeActiveProfileId(nextActiveProfileId);
+  }
+
+  function markActiveProfile(result) {
+    const targetId = activeProfileIdRef.current;
+    if (!targetId) {
+      return;
+    }
+
+    setProfiles((current) => {
+      const next = sortProfiles(current.map((profile) => (profile.id === targetId ? touchProfileUsage(profile, result) : profile)));
+      writeProfiles(next);
+      return next;
+    });
+  }
+
   useEffect(() => {
-    setProfiles(readProfiles());
-    setActiveProfileId(readActiveProfileId());
+    const storedProfiles = readProfiles();
+    const storedActiveProfileId = readActiveProfileId();
+    const nextActiveId = storedProfiles.some((profile) => profile.id === storedActiveProfileId)
+      ? storedActiveProfileId
+      : storedProfiles[0]?.id || null;
+
+    setProfiles(storedProfiles);
+    setActiveProfileId(nextActiveId);
   }, []);
 
   useEffect(() => {
@@ -204,10 +308,16 @@ export default function App() {
 
       removeStatus = window.wobb.onStatusChange((nextStatus) => {
         setStatus(nextStatus);
+        if (nextStatus.state === 'connected') {
+          markActiveProfile('connected');
+        }
+        if (nextStatus.state === 'error') {
+          markActiveProfile('error');
+        }
       });
 
       removeLog = window.wobb.onLog((entry) => {
-        setLogs((current) => [...current, entry].slice(-200));
+        setLogs((current) => [...current, entry].slice(-250));
       });
     }
 
@@ -227,13 +337,6 @@ export default function App() {
     }
   }, [status.error]);
 
-  function persistProfiles(nextProfiles, nextActiveProfileId) {
-    setProfiles(nextProfiles);
-    setActiveProfileId(nextActiveProfileId);
-    writeProfiles(nextProfiles);
-    writeActiveProfileId(nextActiveProfileId);
-  }
-
   function openCreateProfile() {
     setEditingProfileId(null);
     setDraftProfile(createEmptyProfile());
@@ -243,7 +346,7 @@ export default function App() {
 
   function openEditProfile(profile) {
     setEditingProfileId(profile.id);
-    setDraftProfile(profile);
+    setDraftProfile(createEmptyProfile(profile));
     setActiveNav('profiles');
     setMessage('');
   }
@@ -254,9 +357,9 @@ export default function App() {
       const nextProfiles = editingProfileId
         ? profiles.map((profile) => (profile.id === editingProfileId ? savedProfile : profile))
         : [savedProfile, ...profiles];
-      const nextActiveProfileId = activeProfileId || savedProfile.id;
+      const nextActiveProfileId = editingProfileId === activeProfileId ? savedProfile.id : activeProfileId || savedProfile.id;
 
-      persistProfiles(nextProfiles, nextActiveProfileId === editingProfileId ? savedProfile.id : nextActiveProfileId);
+      persistProfiles(nextProfiles, nextActiveProfileId);
       setEditingProfileId(null);
       setMessage(`Saved profile ${savedProfile.name}.`);
       setActiveNav('connect');
@@ -279,9 +382,23 @@ export default function App() {
 
   function handleSelectProfile(profile) {
     setActiveProfileId(profile.id);
+    activeProfileIdRef.current = profile.id;
     writeActiveProfileId(profile.id);
     setMessage(`Selected profile ${profile.name}.`);
     setActiveNav('connect');
+  }
+
+  function handleDuplicateProfile(profile) {
+    const nextProfile = duplicateProfile(profile);
+    persistProfiles([nextProfile, ...profiles], nextProfile.id);
+    setMessage(`Duplicated profile ${profile.name}.`);
+  }
+
+  function handleToggleFavorite(profile) {
+    const nextProfiles = profiles.map((entry) =>
+      entry.id === profile.id ? createEmptyProfile({ ...entry, isFavorite: !entry.isFavorite, updatedAt: new Date().toISOString() }) : entry
+    );
+    persistProfiles(nextProfiles, activeProfileId);
   }
 
   async function handleCopyShareLink(profile = activeProfile) {
@@ -292,10 +409,49 @@ export default function App() {
 
     try {
       const shareLink = createShareLink(profile);
-      await window.navigator.clipboard.writeText(shareLink);
-      setMessage('Profile link copied.');
+      await copyText(shareLink);
+      setMessage('Profile URI copied.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to copy profile link.');
+    }
+  }
+
+  async function handleCopyProfileSummary(profile = activeProfile) {
+    if (!profile) {
+      setMessage('Select a profile first.');
+      return;
+    }
+
+    try {
+      await copyText(`${createProfileSummary(profile)}\n\n${createShareLink(profile)}`);
+      setMessage('Profile summary copied.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to copy profile summary.');
+    }
+  }
+
+  async function handleImportClipboard() {
+    try {
+      const clipboard = await readClipboardText();
+      if (!clipboard) {
+        throw new Error('Clipboard is empty.');
+      }
+      setImportText(clipboard);
+      setMessage('Pasted profile input from clipboard.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to read clipboard.');
+    }
+  }
+
+  function handleImportText() {
+    try {
+      const imported = parseProfileImport(importText);
+      setEditingProfileId(null);
+      setDraftProfile(imported);
+      setActiveNav('profiles');
+      setMessage(`Imported draft for ${imported.name}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to import profile.');
     }
   }
 
@@ -309,7 +465,7 @@ export default function App() {
     setMessage('');
 
     try {
-      if (isConnected || status.state === 'starting') {
+      if (isConnected || status.state === 'connecting') {
         await window.wobb.stop();
         setMessage('Disconnected.');
         return;
@@ -334,6 +490,7 @@ export default function App() {
 
       setMessage(`Connecting to ${endpointLabel(activeProfile)}.`);
     } catch (error) {
+      markActiveProfile('error');
       setMessage(error instanceof Error ? error.message : 'Connection failed.');
     } finally {
       setLoading(false);
@@ -362,6 +519,7 @@ export default function App() {
           sshHost: bootstrapDraft.sshHost,
           sshPort: bootstrapDraft.sshPort,
           sshUser: bootstrapDraft.sshUser,
+          authMethod: bootstrapDraft.authMethod,
           uuid: bootstrapDraft.uuid || undefined,
           publicKey: bootstrapDraft.publicKey || undefined,
           shortId: bootstrapDraft.shortId || undefined,
@@ -397,6 +555,22 @@ export default function App() {
     setActiveNav('profiles');
   }
 
+  async function handleCopyLogs() {
+    if (!logs.length) {
+      setMessage('No logs to copy.');
+      return;
+    }
+
+    const payload = logs.map((entry) => `[${entry.timestamp}] ${entry.stream} ${entry.level.toUpperCase()} ${entry.message}`).join('\n');
+    await copyText(payload);
+    setMessage('Logs copied.');
+  }
+
+  function handleClearLogs() {
+    setLogs([]);
+    setMessage('Logs cleared.');
+  }
+
   const renderConnect = () => (
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -404,44 +578,35 @@ export default function App() {
           <p className="text-sm font-medium text-blue-400">Wobb desktop</p>
           <h2 className="mt-2 text-3xl font-semibold text-slate-50">Self-hosted client</h2>
           <p className="mt-2 max-w-xl text-sm text-slate-400">
-            Connect with your own VLESS and REALITY profile. No public access keys, no hosted plans.
+            Connect with your own VLESS and REALITY profile. Import, edit, export, and run locally.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className={`rounded-md border px-3 py-1.5 text-sm ${
-            isConnected ? 'border-blue-500/30 bg-blue-500/10 text-blue-100' : 'border-slate-700 bg-slate-900 text-slate-300'
-          }`}>
-            {connectionLabel}
-          </div>
-          <div className="rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm text-slate-300">
-            {activeProfile?.mode === 'vpn' ? 'VPN' : 'Proxy'}
-          </div>
-        </div>
+        <div className={`rounded-md border px-3 py-1.5 text-sm ${statusBadgeClass(status.state)}`}>{connectionLabel}</div>
       </header>
 
       <section className="rounded-lg border border-slate-800 bg-slate-900/88 p-5">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_220px]">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_240px]">
           <div className="space-y-5">
             <div className="rounded-lg border border-slate-800 bg-slate-950/45 p-5">
               <div className="text-xs uppercase tracking-wide text-slate-500">Selected profile</div>
               <div className="mt-3 text-2xl font-semibold text-slate-50">{activeProfile?.name || 'No profile selected'}</div>
               <div className="mt-2 text-sm text-slate-400">
-                {activeProfile ? `${endpointLabel(activeProfile)} - ${activeProfile.serverName}` : 'Create a local profile to start.'}
+                {activeProfile ? `${endpointLabel(activeProfile)} | ${activeProfile.serverName}` : 'Create or import a local profile to start.'}
               </div>
             </div>
 
             <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-4">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Profile</div>
-                <div className="mt-2 text-sm text-slate-100">{activeProfile?.serverName || 'Not loaded'}</div>
+                <div className="text-xs uppercase tracking-wide text-slate-500">Mode</div>
+                <div className="mt-2 text-sm text-slate-100">{activeProfile ? (activeProfile.mode === 'vpn' ? 'VPN' : 'Proxy') : 'Not loaded'}</div>
               </div>
               <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-4">
                 <div className="text-xs uppercase tracking-wide text-slate-500">Endpoint</div>
                 <div className="mt-2 text-sm text-slate-100">{activeProfile ? endpointLabel(activeProfile) : 'Not loaded'}</div>
               </div>
               <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-4">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Binary</div>
-                <div className="mt-2 text-sm text-slate-100">{status.binaryPath || 'Not resolved yet'}</div>
+                <div className="text-xs uppercase tracking-wide text-slate-500">Last result</div>
+                <div className="mt-2 text-sm text-slate-100">{activeProfile?.lastConnectionResult || 'No result yet'}</div>
               </div>
             </div>
 
@@ -452,9 +617,7 @@ export default function App() {
             ) : null}
 
             {message ? (
-              <div className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-300">
-                {message}
-              </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-300">{message}</div>
             ) : null}
           </div>
 
@@ -467,15 +630,8 @@ export default function App() {
             >
               {connectLabel}
             </button>
-
-            <button
-              type="button"
-              onClick={() => handleCopyShareLink()}
-              disabled={!activeProfile}
-              className="h-11 rounded-lg border border-slate-800 bg-slate-900 px-4 text-sm text-slate-200 transition hover:border-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Copy profile link
-            </button>
+            <button type="button" onClick={() => handleCopyShareLink()} disabled={!activeProfile} className="h-11 rounded-lg border border-slate-800 bg-slate-900 px-4 text-sm text-slate-200 transition hover:border-slate-700 disabled:cursor-not-allowed disabled:opacity-60">Copy URI</button>
+            <button type="button" onClick={() => handleCopyProfileSummary()} disabled={!activeProfile} className="h-11 rounded-lg border border-slate-800 bg-slate-900 px-4 text-sm text-slate-200 transition hover:border-slate-700 disabled:cursor-not-allowed disabled:opacity-60">Copy summary</button>
           </div>
         </div>
       </section>
@@ -485,7 +641,7 @@ export default function App() {
           <h2 className="mb-4 text-base font-semibold text-slate-100">Profile details</h2>
           <DetailRow label="Host" value={activeProfile?.serverAddress || 'Not loaded'} />
           <DetailRow label="Port" value={activeProfile?.serverPort || 'Not loaded'} />
-          <DetailRow label="Mode" value={activeProfile ? (activeProfile.mode === 'vpn' ? 'VPN' : 'Proxy') : 'Not loaded'} />
+          <DetailRow label="Server name" value={activeProfile?.serverName || 'Not loaded'} />
           <DetailRow label="Remarks" value={activeProfile?.remarks || 'None'} />
         </section>
 
@@ -507,9 +663,7 @@ export default function App() {
         <header>
           <p className="text-sm font-medium text-blue-400">Profiles</p>
           <h2 className="mt-2 text-3xl font-semibold text-slate-50">Local profile editor</h2>
-          <p className="mt-2 max-w-xl text-sm text-slate-400">
-            Save and edit self-hosted connection profiles locally on this machine.
-          </p>
+          <p className="mt-2 max-w-xl text-sm text-slate-400">Save and edit self-hosted connection profiles locally on this machine.</p>
         </header>
 
         <section className="rounded-lg border border-slate-800 bg-slate-900/88 p-5">
@@ -519,13 +673,7 @@ export default function App() {
             <Field label="Port" value={draftProfile.serverPort} onChange={(event) => setDraftProfile((current) => ({ ...current, serverPort: event.target.value }))} placeholder="8443" />
             <Field label="UUID" value={draftProfile.uuid} onChange={(event) => setDraftProfile((current) => ({ ...current, uuid: event.target.value }))} />
             <div className="md:col-span-2">
-              <button
-                type="button"
-                onClick={() => setDraftProfile((current) => ({ ...current, uuid: generateUuid() }))}
-                className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:border-slate-700"
-              >
-                Generate UUID
-              </button>
+              <button type="button" onClick={() => setDraftProfile((current) => ({ ...current, uuid: generateUuid() }))} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:border-slate-700">Generate UUID</button>
             </div>
             <Field label="Server name / SNI" value={draftProfile.serverName} onChange={(event) => setDraftProfile((current) => ({ ...current, serverName: event.target.value }))} />
             <Field label="REALITY public key" value={draftProfile.publicKey} onChange={(event) => setDraftProfile((current) => ({ ...current, publicKey: event.target.value }))} />
@@ -536,7 +684,7 @@ export default function App() {
             <div className="md:col-span-2">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Mode</span>
               <div className="mt-2">
-                <ModeToggle value={draftProfile.mode} onChange={(mode) => setDraftProfile((current) => ({ ...current, mode }))} />
+                <SegmentedToggle value={draftProfile.mode} onChange={(mode) => setDraftProfile((current) => ({ ...current, mode }))} options={[{ label: 'Proxy', value: 'proxy' }, { label: 'VPN', value: 'vpn' }]} />
               </div>
             </div>
             <div className="md:col-span-2">
@@ -544,44 +692,42 @@ export default function App() {
             </div>
           </div>
 
-          {!draftValidation.valid ? (
-            <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-              {draftValidation.errors[0]}
-            </div>
-          ) : null}
+          {!draftValidation.valid ? <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">{draftValidation.errors[0]}</div> : null}
 
           <div className="mt-5 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={handleSaveProfile}
-              className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500"
-            >
-              {editingProfileId ? 'Update profile' : 'Save profile'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setEditingProfileId(null);
-                setDraftProfile(createEmptyProfile());
-              }}
-              className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-700"
-            >
-              Reset form
-            </button>
+            <button type="button" onClick={handleSaveProfile} className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500">{editingProfileId ? 'Update profile' : 'Save profile'}</button>
+            <button type="button" onClick={() => { setEditingProfileId(null); setDraftProfile(createEmptyProfile()); }} className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-700">Reset form</button>
           </div>
         </section>
       </div>
     );
   };
 
+  const renderImport = () => (
+    <div className="space-y-6">
+      <header>
+        <p className="text-sm font-medium text-blue-400">Import</p>
+        <h2 className="mt-2 text-3xl font-semibold text-slate-50">Paste VLESS URI or JSON</h2>
+        <p className="mt-2 max-w-xl text-sm text-slate-400">Import a VLESS REALITY share link, a profile JSON object, or an Xray config with a VLESS outbound.</p>
+      </header>
+
+      <section className="rounded-lg border border-slate-800 bg-slate-900/88 p-5">
+        <textarea value={importText} onChange={(event) => setImportText(event.target.value)} rows={12} placeholder="vless://..." className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-100 outline-none transition focus:border-blue-500" />
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button type="button" onClick={handleImportClipboard} className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-700">Paste clipboard</button>
+          <button type="button" onClick={() => setMessage('QR import is reserved for the camera pass.')} className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-700">QR import</button>
+          <button type="button" onClick={handleImportText} className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500">Import draft</button>
+        </div>
+      </section>
+    </div>
+  );
+
   const renderBootstrap = () => (
     <div className="space-y-6">
       <header>
         <p className="text-sm font-medium text-blue-400">Bootstrap</p>
         <h2 className="mt-2 text-3xl font-semibold text-slate-50">VPS setup helper</h2>
-        <p className="mt-2 max-w-xl text-sm text-slate-400">
-          Generate a manual setup plan. This pass scaffolds the workflow and can output a ready client profile when the REALITY values are already known.
-        </p>
+        <p className="mt-2 max-w-xl text-sm text-slate-400">Generate a manual setup plan and turn the result into a ready profile when the REALITY values are known.</p>
       </header>
 
       <section className="rounded-lg border border-slate-800 bg-slate-900/88 p-5">
@@ -594,20 +740,19 @@ export default function App() {
           <Field label="SSH host" value={bootstrapDraft.sshHost} onChange={(event) => setBootstrapDraft((current) => ({ ...current, sshHost: event.target.value }))} />
           <Field label="SSH port" value={bootstrapDraft.sshPort} onChange={(event) => setBootstrapDraft((current) => ({ ...current, sshPort: event.target.value }))} />
           <Field label="SSH user" value={bootstrapDraft.sshUser} onChange={(event) => setBootstrapDraft((current) => ({ ...current, sshUser: event.target.value }))} />
+          <div className="md:col-span-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">SSH auth</span>
+            <div className="mt-2">
+              <SegmentedToggle value={bootstrapDraft.authMethod} onChange={(value) => setBootstrapDraft((current) => ({ ...current, authMethod: normalizeBootstrapAuthMethod(value) }))} options={[{ label: 'Private key', value: 'private_key' }, { label: 'Password', value: 'password' }]} />
+            </div>
+          </div>
           <Field label="UUID (optional)" value={bootstrapDraft.uuid} onChange={(event) => setBootstrapDraft((current) => ({ ...current, uuid: event.target.value }))} />
           <Field label="Public key (optional)" value={bootstrapDraft.publicKey} onChange={(event) => setBootstrapDraft((current) => ({ ...current, publicKey: event.target.value }))} />
           <Field label="Short ID (optional)" value={bootstrapDraft.shortId} onChange={(event) => setBootstrapDraft((current) => ({ ...current, shortId: event.target.value }))} />
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={handleGeneratePlan}
-            disabled={bootstrapBusy}
-            className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {bootstrapBusy ? 'Working' : 'Generate setup plan'}
-          </button>
+          <button type="button" onClick={handleGeneratePlan} disabled={bootstrapBusy} className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60">{bootstrapBusy ? 'Working' : 'Generate setup plan'}</button>
         </div>
       </section>
 
@@ -622,13 +767,7 @@ export default function App() {
             ))}
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={handleUseBootstrapDraft}
-              className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-700"
-            >
-              {bootstrapPlan.profileReady ? 'Import ready profile' : 'Open draft profile'}
-            </button>
+            <button type="button" onClick={handleUseBootstrapDraft} className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-700">{bootstrapPlan.profileReady ? 'Import ready profile' : 'Open draft profile'}</button>
           </div>
         </section>
       ) : null}
@@ -637,7 +776,13 @@ export default function App() {
 
   const renderLogs = () => (
     <section className="rounded-lg border border-slate-800 bg-slate-900/88 p-5">
-      <h2 className="mb-4 text-base font-semibold text-slate-100">Logs</h2>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-slate-100">Logs</h2>
+        <div className="flex gap-2">
+          <button type="button" onClick={handleCopyLogs} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:border-slate-700">Copy</button>
+          <button type="button" onClick={handleClearLogs} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:border-slate-700">Clear</button>
+        </div>
+      </div>
       <div className="h-96 overflow-y-auto rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3">
         {logs.length === 0 ? (
           <div className="text-sm text-slate-500">No logs yet.</div>
@@ -646,9 +791,7 @@ export default function App() {
             {logs.map((entry) => (
               <div key={entry.id} className="border-b border-slate-800 pb-3 last:border-b-0">
                 <div className="text-xs text-slate-500">{entry.timestamp.slice(11, 19)} {entry.stream}</div>
-                <div className={`mt-1 text-sm ${entry.level === 'error' ? 'text-rose-300' : entry.level === 'warn' ? 'text-slate-300' : 'text-slate-200'}`}>
-                  {entry.message}
-                </div>
+                <div className={`mt-1 text-sm ${entry.level === 'error' ? 'text-rose-300' : entry.level === 'warn' ? 'text-amber-100' : 'text-slate-200'}`}>{entry.message}</div>
               </div>
             ))}
           </div>
@@ -661,11 +804,10 @@ export default function App() {
     <section className="rounded-lg border border-slate-800 bg-slate-900/88 p-5">
       <h2 className="mb-4 text-base font-semibold text-slate-100">Settings</h2>
       <DetailRow label="Helper API" value={HELPER_API_URL} />
+      <DetailRow label="Profiles" value={String(profiles.length)} />
       <DetailRow label="Selected mode" value={activeProfile ? (activeProfile.mode === 'vpn' ? 'VPN' : 'Proxy') : 'Not selected'} />
       <DetailRow label="Binary path" value={status.binaryPath || 'Not resolved yet'} />
-      <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/45 p-4 text-sm text-slate-400">
-        The core flow is local profile based. The helper API is only used for the optional bootstrap planner.
-      </div>
+      <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/45 p-4 text-sm text-slate-400">The core flow is local profile based. The helper API is optional and only used for bootstrap planning.</div>
     </section>
   );
 
@@ -673,6 +815,8 @@ export default function App() {
     switch (activeNav) {
       case 'profiles':
         return renderProfiles();
+      case 'import':
+        return renderImport();
       case 'bootstrap':
         return renderBootstrap();
       case 'logs':
@@ -686,72 +830,63 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#060d18] text-slate-100">
-      <main className="mx-auto grid min-h-screen max-w-[1460px] grid-cols-[76px_340px_minmax(0,1fr)] gap-0 px-4 py-4">
-        <aside className="flex flex-col items-center rounded-l-xl border border-r-0 border-slate-800 bg-[#091120] px-3 py-4">
+      <main className="mx-auto grid min-h-screen max-w-[1500px] grid-cols-[88px_360px_minmax(0,1fr)] gap-0 px-4 py-4">
+        <aside className="flex flex-col rounded-l-xl border border-r-0 border-slate-800 bg-[#091120] px-3 py-4">
           <div className="mb-6 flex h-11 w-11 items-center justify-center rounded-lg bg-blue-600 text-sm font-semibold text-white">W</div>
           <div className="flex w-full flex-1 flex-col gap-2">
-            <NavButton icon={Server} label="Connect" active={activeNav === 'connect'} onClick={() => setActiveNav('connect')} />
-            <NavButton icon={Plus} label="Profiles" active={activeNav === 'profiles'} onClick={() => setActiveNav('profiles')} />
-            <NavButton icon={Wrench} label="Bootstrap" active={activeNav === 'bootstrap'} onClick={() => setActiveNav('bootstrap')} />
-            <NavButton icon={ScrollText} label="Logs" active={activeNav === 'logs'} onClick={() => setActiveNav('logs')} />
-            <NavButton icon={Settings} label="Settings" active={activeNav === 'settings'} onClick={() => setActiveNav('settings')} />
+            <NavButton label="Connect" active={activeNav === 'connect'} onClick={() => setActiveNav('connect')} />
+            <NavButton label="Profiles" active={activeNav === 'profiles'} onClick={() => setActiveNav('profiles')} />
+            <NavButton label="Import" active={activeNav === 'import'} onClick={() => setActiveNav('import')} />
+            <NavButton label="Bootstrap" active={activeNav === 'bootstrap'} onClick={() => setActiveNav('bootstrap')} />
+            <NavButton label="Logs" active={activeNav === 'logs'} onClick={() => setActiveNav('logs')} />
+            <NavButton label="Settings" active={activeNav === 'settings'} onClick={() => setActiveNav('settings')} />
           </div>
         </aside>
 
         <aside className="flex min-h-0 flex-col border border-r-0 border-slate-800 bg-[#0b1323]">
           <div className="border-b border-slate-800 px-5 py-5">
             <h1 className="text-lg font-semibold text-slate-50">Profiles</h1>
-            <p className="mt-1 text-sm text-slate-400">Local self-hosted servers saved on this device.</p>
+            <p className="mt-1 text-sm text-slate-400">Local self-hosted servers saved on this machine.</p>
           </div>
 
           <div className="space-y-4 border-b border-slate-800 px-5 py-5">
-            <button
-              type="button"
-              onClick={openCreateProfile}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500"
-            >
-              <Plus className="h-4 w-4" />
-              Add profile
-            </button>
+            <div className="flex gap-2">
+              <button type="button" onClick={openCreateProfile} className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500">Add profile</button>
+              <button type="button" onClick={() => setActiveNav('import')} className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-700">Import</button>
+            </div>
 
             <label className="block">
               <span className="mb-2 block text-sm text-slate-300">Search</span>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search"
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-blue-500"
-              />
+              <input type="text" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-blue-500" />
             </label>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
             {filteredProfiles.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-slate-800 px-4 py-6 text-sm text-slate-500">
-                No local profiles yet.
-              </div>
+              <div className="rounded-lg border border-dashed border-slate-800 px-4 py-6 text-sm text-slate-500">No local profiles yet.</div>
             ) : (
               <div className="space-y-2">
                 {filteredProfiles.map((profile) => {
                   const selected = profile.id === activeProfileId;
                   return (
                     <div key={profile.id} className={`rounded-lg border px-4 py-3 ${selected ? 'border-blue-500 bg-blue-500/10' : 'border-slate-800 bg-slate-950/40'}`}>
-                      <button type="button" onClick={() => handleSelectProfile(profile)} className="w-full text-left">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-medium text-slate-100">{profile.name}</div>
-                            <div className="mt-1 text-xs text-slate-400">{endpointLabel(profile)}</div>
-                          </div>
-                          <div className="rounded-md bg-slate-900 px-2 py-1 text-[11px] text-slate-400">
-                            {profile.mode === 'vpn' ? 'VPN' : 'Proxy'}
-                          </div>
-                        </div>
-                      </button>
-                      <div className="mt-3 flex gap-2">
-                        <button type="button" onClick={() => openEditProfile(profile)} className="flex-1 rounded-lg border border-slate-800 px-3 py-2 text-xs text-slate-200 transition hover:border-slate-700">Edit</button>
-                        <button type="button" onClick={() => handleCopyShareLink(profile)} className="flex-1 rounded-lg border border-slate-800 px-3 py-2 text-xs text-slate-200 transition hover:border-slate-700">Copy</button>
-                        <button type="button" onClick={() => handleDeleteProfile(profile)} className="rounded-lg border border-rose-900/60 px-3 py-2 text-xs text-rose-300 transition hover:border-rose-700"><Trash2 className="h-4 w-4" /></button>
+                      <div className="flex items-start justify-between gap-3">
+                        <button type="button" onClick={() => handleSelectProfile(profile)} className="flex-1 text-left">
+                          <div className="text-sm font-medium text-slate-100">{profile.name}</div>
+                          <div className="mt-1 text-xs text-slate-400">{endpointLabel(profile)}</div>
+                        </button>
+                        <button type="button" onClick={() => handleToggleFavorite(profile)} className={`rounded-md border px-2 py-1 text-[11px] ${profile.isFavorite ? 'border-blue-500/30 bg-blue-500/10 text-blue-100' : 'border-slate-800 bg-slate-900 text-slate-400'}`}>{profile.isFavorite ? 'Fav' : 'Star'}</button>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-400">
+                        <div className="rounded-md bg-slate-900 px-2 py-1">{profile.mode === 'vpn' ? 'VPN' : 'Proxy'}</div>
+                        <div className="rounded-md bg-slate-900 px-2 py-1">{profile.lastConnectionResult || 'No result'}</div>
+                        <div className="rounded-md bg-slate-900 px-2 py-1">{formatRelativeTime(profile.lastUsedAt)}</div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-4 gap-2">
+                        <button type="button" onClick={() => openEditProfile(profile)} className="rounded-lg border border-slate-800 px-3 py-2 text-xs text-slate-200 transition hover:border-slate-700">Edit</button>
+                        <button type="button" onClick={() => handleCopyShareLink(profile)} className="rounded-lg border border-slate-800 px-3 py-2 text-xs text-slate-200 transition hover:border-slate-700">Copy</button>
+                        <button type="button" onClick={() => handleDuplicateProfile(profile)} className="rounded-lg border border-slate-800 px-3 py-2 text-xs text-slate-200 transition hover:border-slate-700">Copy as new</button>
+                        <button type="button" onClick={() => handleDeleteProfile(profile)} className="rounded-lg border border-rose-900/60 px-3 py-2 text-xs text-rose-300 transition hover:border-rose-700">Delete</button>
                       </div>
                     </div>
                   );
@@ -768,3 +903,4 @@ export default function App() {
     </div>
   );
 }
+

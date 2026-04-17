@@ -1,5 +1,5 @@
 const path = require('node:path');
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, clipboard, ipcMain } = require('electron');
 const { XrayManager } = require('./services/XrayManager');
 
 let mainWindow = null;
@@ -8,7 +8,7 @@ const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:51
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const wobbState = {
-  state: 'ready',
+  state: 'idle',
   pid: null,
   binaryPath: null,
   configPath: 'stdin:',
@@ -73,7 +73,7 @@ const engine = new XrayManager({
 
 engine.on('started', (status) => {
   updateWobbState({
-    state: wobbState.stealthMode ? 'bypassing-dpi' : 'protected',
+    state: 'connected',
     pid: status.pid,
     binaryPath: status.binaryPath,
     configPath: status.configPath,
@@ -91,7 +91,7 @@ engine.on('stderr', (line) => {
 
 engine.on('exit', ({ code, signal, manualStop }) => {
   updateWobbState({
-    state: 'ready',
+    state: 'idle',
     pid: null,
     configPath: 'stdin:',
     error: manualStop ? null : `Engine exited unexpectedly (code=${code}, signal=${signal || 'none'})`,
@@ -100,7 +100,7 @@ engine.on('exit', ({ code, signal, manualStop }) => {
 
 engine.on('error', (error) => {
   updateWobbState({
-    state: 'ready',
+    state: 'error',
     pid: null,
     configPath: 'stdin:',
     error: error.message,
@@ -111,11 +111,11 @@ function createWindow() {
   const isDev = !app.isPackaged;
 
   mainWindow = new BrowserWindow({
-    width: 1180,
-    height: 820,
-    minWidth: 980,
-    minHeight: 700,
-    backgroundColor: '#111827',
+    width: 1240,
+    height: 860,
+    minWidth: 1040,
+    minHeight: 720,
+    backgroundColor: '#0b1220',
     title: 'Wobb',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -153,7 +153,7 @@ ipcMain.handle('wobb:start', async (_event, payload = {}) => {
   const profile = payload.profile && typeof payload.profile === 'object' ? payload.profile : null;
 
   if (!profile) {
-    throw new Error('Resolved access profile is required.');
+    throw new Error('Resolved profile is required.');
   }
 
   const serverAddress = String(profile.serverAddress || '').trim();
@@ -173,7 +173,7 @@ ipcMain.handle('wobb:start', async (_event, payload = {}) => {
   }
 
   updateWobbState({
-    state: 'starting',
+    state: 'connecting',
     stealthMode,
     error: null,
   });
@@ -190,7 +190,7 @@ ipcMain.handle('wobb:start', async (_event, payload = {}) => {
     const status = await engine.startXray(config);
 
     updateWobbState({
-      state: stealthMode ? 'bypassing-dpi' : 'protected',
+      state: 'connected',
       pid: status.pid,
       binaryPath: status.binaryPath,
       configPath: status.configPath,
@@ -201,7 +201,7 @@ ipcMain.handle('wobb:start', async (_event, payload = {}) => {
     return { ok: true, status: { ...wobbState } };
   } catch (error) {
     updateWobbState({
-      state: 'ready',
+      state: 'error',
       pid: null,
       configPath: 'stdin:',
       stealthMode,
@@ -215,7 +215,7 @@ ipcMain.handle('wobb:start', async (_event, payload = {}) => {
 
 ipcMain.handle('wobb:stop', async () => {
   updateWobbState({
-    state: 'stopping',
+    state: 'disconnecting',
     error: null,
   });
 
@@ -223,7 +223,7 @@ ipcMain.handle('wobb:stop', async () => {
     const stopped = await engine.stopXray();
 
     updateWobbState({
-      state: 'ready',
+      state: 'idle',
       pid: null,
       configPath: 'stdin:',
       error: null,
@@ -232,7 +232,7 @@ ipcMain.handle('wobb:stop', async () => {
     return { ok: true, stopped, status: { ...wobbState } };
   } catch (error) {
     updateWobbState({
-      state: 'ready',
+      state: 'error',
       error: error.message,
     });
 
@@ -243,6 +243,15 @@ ipcMain.handle('wobb:stop', async () => {
 
 ipcMain.handle('wobb:get-status', async () => {
   return { ...wobbState };
+});
+
+ipcMain.handle('wobb:copy-text', async (_event, text = '') => {
+  clipboard.writeText(String(text));
+  return true;
+});
+
+ipcMain.handle('wobb:read-text', async () => {
+  return clipboard.readText();
 });
 
 app.whenReady().then(() => {
