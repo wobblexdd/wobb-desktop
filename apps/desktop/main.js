@@ -11,7 +11,10 @@ const wobbState = {
   state: 'idle',
   pid: null,
   binaryPath: null,
-  configPath: 'stdin:',
+  configPath: null,
+  xrayConfigPath: null,
+  socksPort: 10808,
+  httpPort: 10809,
   stealthMode: false,
   error: null,
 };
@@ -77,8 +80,12 @@ engine.on('started', (status) => {
     pid: status.pid,
     binaryPath: status.binaryPath,
     configPath: status.configPath,
+    xrayConfigPath: status.xrayConfigPath,
+    socksPort: status.socksPort,
+    httpPort: status.httpPort,
     error: null,
   });
+  pushLog(`Desktop runtime ready. Local SOCKS 127.0.0.1:${status.socksPort}, HTTP 127.0.0.1:${status.httpPort}.`, 'info', 'system');
 });
 
 engine.on('stdout', (line) => {
@@ -93,7 +100,8 @@ engine.on('exit', ({ code, signal, manualStop }) => {
   updateWobbState({
     state: 'idle',
     pid: null,
-    configPath: 'stdin:',
+    configPath: null,
+    xrayConfigPath: null,
     error: manualStop ? null : `Engine exited unexpectedly (code=${code}, signal=${signal || 'none'})`,
   });
 });
@@ -102,7 +110,8 @@ engine.on('error', (error) => {
   updateWobbState({
     state: 'error',
     pid: null,
-    configPath: 'stdin:',
+    configPath: null,
+    xrayConfigPath: null,
     error: error.message,
   });
 });
@@ -159,6 +168,7 @@ ipcMain.handle('wobb:start', async (_event, payload = {}) => {
   const serverAddress = String(profile.serverAddress || '').trim();
   const uuid = String(profile.uuid || '').trim();
   const serverPort = Number(profile.serverPort);
+  const mode = String(profile.mode || 'proxy').trim().toLowerCase();
 
   if (!serverAddress) {
     throw new Error('Resolved profile is missing a server address.');
@@ -172,11 +182,17 @@ ipcMain.handle('wobb:start', async (_event, payload = {}) => {
     throw new Error('Resolved profile has an invalid port.');
   }
 
+  if (mode === 'vpn') {
+    throw new Error('Desktop VPN mode is not wired in this Windows runtime yet. Use Proxy mode for real local testing.');
+  }
+
   updateWobbState({
     state: 'connecting',
     stealthMode,
     error: null,
   });
+
+  pushLog(`Starting desktop runtime for ${profile.name || 'profile'} at ${serverAddress}:${serverPort}.`, 'info', 'system');
 
   const config = XrayManager.createBasicVlessConfig(
     {
@@ -194,6 +210,9 @@ ipcMain.handle('wobb:start', async (_event, payload = {}) => {
       pid: status.pid,
       binaryPath: status.binaryPath,
       configPath: status.configPath,
+      xrayConfigPath: status.xrayConfigPath,
+      socksPort: status.socksPort,
+      httpPort: status.httpPort,
       stealthMode,
       error: null,
     });
@@ -203,7 +222,8 @@ ipcMain.handle('wobb:start', async (_event, payload = {}) => {
     updateWobbState({
       state: 'error',
       pid: null,
-      configPath: 'stdin:',
+      configPath: null,
+      xrayConfigPath: null,
       stealthMode,
       error: error.message,
     });
@@ -219,13 +239,16 @@ ipcMain.handle('wobb:stop', async () => {
     error: null,
   });
 
+  pushLog('Stopping desktop runtime by user request.', 'info', 'system');
+
   try {
     const stopped = await engine.stopXray();
 
     updateWobbState({
       state: 'idle',
       pid: null,
-      configPath: 'stdin:',
+      configPath: null,
+      xrayConfigPath: null,
       error: null,
     });
 

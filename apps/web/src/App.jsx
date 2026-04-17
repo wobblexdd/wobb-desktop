@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   bootstrapDraftToProfile,
   createEmptyBootstrapDraft,
@@ -24,7 +24,10 @@ const INITIAL_STATUS = {
   state: 'idle',
   pid: null,
   binaryPath: null,
-  configPath: 'stdin:',
+  configPath: null,
+  xrayConfigPath: null,
+  socksPort: 10808,
+  httpPort: 10809,
   stealthMode: false,
   error: null,
 };
@@ -648,7 +651,7 @@ export default function App() {
         <section className="rounded-lg border border-slate-800 bg-slate-900/88 p-5">
           <h2 className="mb-4 text-base font-semibold text-slate-100">Runtime</h2>
           <DetailRow label="PID" value={status.pid || 'Not running'} />
-          <DetailRow label="Config" value={status.configPath || 'stdin:'} />
+          <DetailRow label="Config" value={status.configPath || 'Not running'} />
           <DetailRow label="Binary" value={status.binaryPath || 'Not resolved yet'} />
         </section>
       </div>
@@ -903,4 +906,6 @@ export default function App() {
     </div>
   );
 }
+
+
 
