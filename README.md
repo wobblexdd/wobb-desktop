@@ -1,29 +1,25 @@
 ﻿# WOBB Desktop
 
-Portfolio-ready Electron desktop client for self-hosted Xray / VLESS / REALITY usage.
+Electron desktop client for a self-hosted Xray / VLESS / REALITY workflow.
 
-WOBB Desktop is the Windows-first desktop companion to the WOBB self-hosted client flow. It manages local profiles, import and export, optional VPS bootstrap planning, and a desktop runtime path built around a local Xray-compatible engine payload.
+WOBB Desktop is the public desktop repository in the WOBB split project. It manages local profiles, import and export, optional VPS bootstrap planning, and a desktop runtime path built around a local engine payload. It is intentionally not a hosted VPN dashboard or SaaS client.
 
-## Portfolio Summary
+## Release Summary
 
-WOBB Desktop demonstrates a practical desktop client architecture for self-hosted infrastructure:
+This repo is intended to publish:
 
-- Electron shell with a React renderer
-- local VLESS / REALITY profile management
-- import, export, and validation workflows
-- explicit runtime status and logs
-- optional helper backend integration for bootstrap planning
-- file-based handoff into a local desktop engine runtime
+- source code and docs for the desktop self-hosted client
+- packaged desktop artifacts built with `electron-builder`
+- GitHub release binaries for local self-hosted use
 
 ## Features
 
-- Local profile CRUD with favorites and active profile selection
-- VLESS / REALITY validation before connect
-- Import from VLESS URI or supported JSON
-- Export via copied URI or copied profile summary
-- Bootstrap planner integration through the helper backend
-- Status badges, logs, and runtime detail surfaces
-- Clear separation between renderer, Electron bridge, and engine runtime
+- local VLESS / REALITY profile CRUD
+- import from VLESS URI or supported JSON
+- export via copied URI or copied summary
+- optional helper-backed bootstrap planning
+- explicit runtime status, logs, and profile detail views
+- local engine handoff through Electron main process
 
 ## Tech Stack
 
@@ -31,65 +27,61 @@ WOBB Desktop demonstrates a practical desktop client architecture for self-hoste
 - React 19
 - Vite
 - Tailwind CSS 4
-- Local desktop engine payload under `bin/<platform>/`
+- Local engine payload under `bin/<platform>/`
 
 ## Repository Responsibility
 
-This repository is responsible for:
+This repo is responsible for:
 
-- the desktop renderer and Electron shell
-- local profile persistence and validation
-- import / export UX on desktop
-- local engine startup wiring and runtime status display
+- Electron shell and preload bridge
+- desktop renderer and local profile UX
+- local engine startup wiring
+- desktop packaging and public release documentation
 
-This repository is not responsible for:
+This repo is not responsible for:
 
 - hosted accounts
-- billing or subscriptions
-- server monetization flows
-- mandatory backend auth for basic client use
+- subscriptions or billing
+- public server inventory
+- mandatory backend auth for normal client use
 
 ## Related Repositories
 
-WOBB is split into focused repositories:
-
 - `wobb-mobile`: Android client
-- `wobb-desktop`: desktop client
+- `wobb-desktop`: Electron desktop client
 - `wobb-backend`: optional helper service for validation and bootstrap planning
 
-The backend is optional for local self-hosted use. The main client flow stays profile based and local.
+The backend is optional for local self-hosted use. The main client flow stays profile-based and local.
 
 ## Folder Overview
 
 ```text
 apps/desktop/          Electron main process and preload bridge
-apps/web/              React desktop renderer
-bin/<platform>/        Local engine payloads, not part of normal Git source
-configs/               Local desktop environment config
-scripts/               Desktop startup and local payload checks
+apps/web/              React renderer
+bin/<platform>/        Local engine payloads, kept out of Git
+configs/               Local desktop env templates
+scripts/               Startup checks and release helpers
 ```
+
+## Requirements
+
+- Node.js 20+
+- local engine payload under `bin/<platform>/`
+
+Expected payloads:
+
+- Windows: `bin/win32/wobb-engine.exe`
+- Linux/macOS: `bin/<platform>/wobb-engine`
 
 ## Setup
 
-### Requirements
-
-- Node.js 20+
-- Local engine payload under `bin/<platform>/`
-
-Expected local payloads:
-
-- Windows: `bin/win32/wobb-engine.exe`, plus required data files such as `geoip.dat` and `geosite.dat`
-- Linux/macOS: `bin/<platform>/wobb-engine`
-
-### Install
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-### Optional helper backend config
-
-Copy the template and set the helper URL only if you want bootstrap planning:
+Optional helper backend config for bootstrap planning:
 
 ```bash
 copy configs\.env.example configs\.env
@@ -101,17 +93,76 @@ Default example:
 VITE_API_URL=http://127.0.0.1:3000
 ```
 
-### Verify the local engine payload
+Verify the local engine payload before dev or packaging:
 
 ```bash
 npm run build:core-link
 ```
 
-## Local Run
+## Local Development
 
 ```bash
 npm run dev
 ```
+
+## Release Build Commands
+
+### Preflight
+
+```bash
+npm run release:check
+```
+
+This verifies the local engine payload and builds the renderer. Packaging commands also clear the previous `release/` directory first so GitHub release artifacts stay clean.
+
+### Unpacked app for verification
+
+```bash
+npm run release:dir
+```
+
+Output directory:
+
+```text
+release/
+```
+
+### Windows portable release
+
+```bash
+npm run release:win
+```
+
+Expected artifact:
+
+```text
+release/wobb-desktop-portable-<version>-x64.exe
+```
+
+### Windows installer release
+
+```bash
+npm run release:win:installer
+```
+
+Expected artifact:
+
+```text
+release/wobb-desktop-setup-<version>-x64.exe
+```
+
+Packaging is configured for unsigned public artifacts; OS-level signing still has to be handled manually if you need signed distribution.
+
+## Packaging Notes
+
+`electron-builder` is configured in `package.json` to:
+
+- package the built renderer from `dist/apps/web/`
+- include Electron main/preload files
+- copy the local runtime payload from `bin/` into packaged app resources
+- emit release artifacts under `release/`
+
+The local engine payload is still required at package time and is intentionally not committed to the public repo.
 
 ## Architecture Overview
 
@@ -119,7 +170,7 @@ The desktop app is organized into three layers:
 
 1. React renderer for profile UX, import/export, logs, and bootstrap planner views
 2. Electron main process for runtime orchestration and local bridge APIs
-3. Local engine payload under `bin/<platform>/` for actual runtime startup
+3. Local engine payload under `bin/<platform>/` for runtime startup
 
 The connect flow is local-first:
 
@@ -129,8 +180,6 @@ The connect flow is local-first:
 4. status and logs flow back into the app UI
 
 ## What You Need To Actually Use It
-
-To use WOBB Desktop as a real client, you need:
 
 - your own VLESS / REALITY server profile
 - a local desktop engine payload in `bin/<platform>/`
@@ -142,12 +191,15 @@ To use WOBB Desktop as a real client, you need:
 - Windows desktop runtime is currently oriented around `Proxy` mode for practical local testing.
 - QR import is currently a clean entry point in product UX, not a full scanning implementation.
 - Bootstrap is still a planning-oriented helper, not a complete remote automation system.
+- Packaging quality still depends on a valid local engine payload being present.
+- Desktop release artifacts are not code-signed in this repo by default.
+- A custom app icon is not configured yet, so packaged builds currently fall back to the default Electron icon.
 - The project is intentionally focused on VLESS / REALITY in this phase.
 
 ## Future Improvements
 
-- Additional desktop runtime validation across platforms
-- More guided engine setup documentation and payload packaging
-- Full QR import flow where appropriate for desktop input devices
-- Better packaged distribution story after runtime testing is finalized
-- More formal screenshots and demo assets for portfolio presentation
+- stronger cross-platform runtime validation
+- a more formal release matrix and screenshot set for GitHub releases
+- tighter engine payload packaging guidance for each platform
+- signed and versioned desktop releases once packaging is exercised more broadly
+- optional CI packaging workflow after runtime validation is finalized

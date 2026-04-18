@@ -21,3 +21,9 @@ configs/.env.production
 .env.*
 !configs/.env.example
 !configs/.env.production.example
+
+*.blockmap
+*.AppImage
+*.dmg
+*.exe
+*.zip
