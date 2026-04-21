@@ -1,29 +1,29 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('wobb', {
+contextBridge.exposeInMainWorld('vpnClient', {
   start(payload) {
-    return ipcRenderer.invoke('wobb:start', payload);
+    return ipcRenderer.invoke('vpn-client:start', payload);
   },
   stop() {
-    return ipcRenderer.invoke('wobb:stop');
+    return ipcRenderer.invoke('vpn-client:stop');
   },
   getStatus() {
-    return ipcRenderer.invoke('wobb:get-status');
+    return ipcRenderer.invoke('vpn-client:get-status');
   },
   copyText(text) {
-    return ipcRenderer.invoke('wobb:copy-text', text);
+    return ipcRenderer.invoke('vpn-client:copy-text', text);
   },
   readText() {
-    return ipcRenderer.invoke('wobb:read-text');
+    return ipcRenderer.invoke('vpn-client:read-text');
   },
   onStatusChange(callback) {
     const listener = (_event, payload) => callback(payload);
-    ipcRenderer.on('wobb:status', listener);
-    return () => ipcRenderer.removeListener('wobb:status', listener);
+    ipcRenderer.on('vpn-client:status', listener);
+    return () => ipcRenderer.removeListener('vpn-client:status', listener);
   },
   onLog(callback) {
     const listener = (_event, payload) => callback(payload);
-    ipcRenderer.on('wobb:log', listener);
-    return () => ipcRenderer.removeListener('wobb:log', listener);
+    ipcRenderer.on('vpn-client:log', listener);
+    return () => ipcRenderer.removeListener('vpn-client:log', listener);
   },
 });

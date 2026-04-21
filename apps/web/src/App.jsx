@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   bootstrapDraftToProfile,
   createEmptyBootstrapDraft,
@@ -17,8 +17,8 @@ import {
 } from './profileUtils';
 
 const HELPER_API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
-const PROFILES_KEY = 'wobb.desktop.selfhosted.profiles.v2';
-const ACTIVE_PROFILE_KEY = 'wobb.desktop.selfhosted.active-profile.v2';
+const PROFILES_KEY = 'vpn-client.desktop.selfhosted.profiles.v2';
+const ACTIVE_PROFILE_KEY = 'vpn-client.desktop.selfhosted.active-profile.v2';
 
 const INITIAL_STATUS = {
   state: 'idle',
@@ -92,8 +92,8 @@ function writeActiveProfileId(profileId) {
 }
 
 async function copyText(text) {
-  if (window.wobb?.copyText) {
-    await window.wobb.copyText(text);
+  if (window.vpnClient?.copyText) {
+    await window.vpnClient.copyText(text);
     return true;
   }
 
@@ -106,8 +106,8 @@ async function copyText(text) {
 }
 
 async function readClipboardText() {
-  if (window.wobb?.readText) {
-    return window.wobb.readText();
+  if (window.vpnClient?.readText) {
+    return window.vpnClient.readText();
   }
 
   if (window.navigator?.clipboard?.readText) {
@@ -297,7 +297,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!window.wobb) {
+    if (!window.vpnClient) {
       setMessage('Electron bridge is unavailable.');
       return;
     }
@@ -306,10 +306,10 @@ export default function App() {
     let removeLog = () => {};
 
     async function bootstrapRuntime() {
-      const currentStatus = await window.wobb.getStatus();
+      const currentStatus = await window.vpnClient.getStatus();
       setStatus(currentStatus);
 
-      removeStatus = window.wobb.onStatusChange((nextStatus) => {
+      removeStatus = window.vpnClient.onStatusChange((nextStatus) => {
         setStatus(nextStatus);
         if (nextStatus.state === 'connected') {
           markActiveProfile('connected');
@@ -319,7 +319,7 @@ export default function App() {
         }
       });
 
-      removeLog = window.wobb.onLog((entry) => {
+      removeLog = window.vpnClient.onLog((entry) => {
         setLogs((current) => [...current, entry].slice(-250));
       });
     }
@@ -459,7 +459,7 @@ export default function App() {
   }
 
   async function handleToggleConnection() {
-    if (!window.wobb) {
+    if (!window.vpnClient) {
       setMessage('Electron bridge is unavailable.');
       return;
     }
@@ -469,7 +469,7 @@ export default function App() {
 
     try {
       if (isConnected || status.state === 'connecting') {
-        await window.wobb.stop();
+        await window.vpnClient.stop();
         setMessage('Disconnected.');
         return;
       }
@@ -483,7 +483,7 @@ export default function App() {
         throw new Error(validation.errors[0]);
       }
 
-      await window.wobb.start({
+      await window.vpnClient.start({
         profile: {
           ...activeProfile,
           serverPort: Number(activeProfile.serverPort),
@@ -598,7 +598,7 @@ export default function App() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-blue-400">Wobb</p>
+          <p className="text-sm font-medium text-blue-400">VPN Client</p>
           <h2 className="mt-2 text-3xl font-semibold text-slate-50">Self-hosted desktop client</h2>
           <p className="mt-2 max-w-xl text-sm text-slate-400">
             Save profiles locally, validate them before connect, and keep runtime status readable while you test your own server.

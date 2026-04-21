@@ -1,8 +1,8 @@
-﻿# WOBB Desktop
+# VPN Client Desktop
 
 Electron desktop client for a self-hosted Xray / VLESS / REALITY workflow.
 
-WOBB Desktop is the public desktop repository in the WOBB split project. It manages local profiles, import and export, optional VPS bootstrap planning, and a desktop runtime path built around a local engine payload. It is intentionally not a hosted VPN dashboard or SaaS client.
+VPN Client Desktop is the public desktop repository in the VPN Client split project. It manages local profiles, import and export, optional VPS bootstrap planning, and a desktop runtime path built around a local engine payload. It is intentionally not a hosted VPN dashboard or SaaS client.
 
 ## Release Summary
 
@@ -47,9 +47,9 @@ This repo is not responsible for:
 
 ## Related Repositories
 
-- `wobb-mobile`: Android client
-- `wobb-desktop`: Electron desktop client
-- `wobb-backend`: optional helper service for validation and bootstrap planning
+- `vpn-client-mobile`: Android client
+- `vpn-client-desktop`: Electron desktop client
+- `vpn-client-backend`: optional helper service for validation and bootstrap planning
 
 The backend is optional for local self-hosted use. The main client flow stays profile-based and local.
 
@@ -70,8 +70,8 @@ scripts/               Startup checks and release helpers
 
 Expected payloads:
 
-- Windows: `bin/win32/wobb-engine.exe`
-- Linux/macOS: `bin/<platform>/wobb-engine`
+- Windows: `bin/win32/vpn-client-engine.exe`
+- Linux/macOS: `bin/<platform>/vpn-client-engine`
 
 ## Setup
 
@@ -136,7 +136,7 @@ npm run release:win
 Expected artifact:
 
 ```text
-release/wobb-desktop-portable-<version>-x64.exe
+release/vpn-client-desktop-portable-<version>-x64.exe
 ```
 
 ### Windows installer release
@@ -148,7 +148,7 @@ npm run release:win:installer
 Expected artifact:
 
 ```text
-release/wobb-desktop-setup-<version>-x64.exe
+release/vpn-client-desktop-setup-<version>-x64.exe
 ```
 
 Packaging is configured for unsigned public artifacts; OS-level signing still has to be handled manually if you need signed distribution.

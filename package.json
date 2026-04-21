@@ -1,8 +1,8 @@
 {
-  "name": "wobb-desktop",
+  "name": "vpn-client-desktop",
   "version": "1.0.0",
   "private": true,
-  "description": "Self-hosted WOBB desktop client for VLESS / REALITY",
+  "description": "Self-hosted VPN Client desktop client for VLESS / REALITY",
   "main": "apps/desktop/main.js",
   "scripts": {
     "start": "node scripts/start-electron.js",
@@ -39,8 +39,8 @@
     "react-dom": "^19.2.4"
   },
   "build": {
-    "appId": "com.wobb.desktop",
-    "productName": "Wobb",
+    "appId": "com.klouse.vpnclient.desktop",
+    "productName": "VPN Client",
     "directories": {
       "output": "release"
     },
@@ -65,26 +65,26 @@
       "target": [
         "portable"
       ],
-      "artifactName": "wobb-desktop-${version}-${arch}.${ext}",
+      "artifactName": "vpn-client-desktop-${version}-${arch}.${ext}",
       "signAndEditExecutable": false
     },
     "linux": {
       "target": [
         "AppImage"
       ],
-      "artifactName": "wobb-desktop-${version}-${arch}.${ext}"
+      "artifactName": "vpn-client-desktop-${version}-${arch}.${ext}"
     },
     "mac": {
       "target": [
         "dmg"
       ],
-      "artifactName": "wobb-desktop-${version}-${arch}.${ext}"
+      "artifactName": "vpn-client-desktop-${version}-${arch}.${ext}"
     },
     "portable": {
-      "artifactName": "wobb-desktop-portable-${version}-${arch}.${ext}"
+      "artifactName": "vpn-client-desktop-portable-${version}-${arch}.${ext}"
     },
     "nsis": {
-      "artifactName": "wobb-desktop-setup-${version}-${arch}.${ext}",
+      "artifactName": "vpn-client-desktop-setup-${version}-${arch}.${ext}",
       "oneClick": true
     }
   },

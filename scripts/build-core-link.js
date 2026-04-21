@@ -15,7 +15,7 @@ function getPlatformFolder(platform = process.platform) {
 }
 
 function getBinaryName(platform = process.platform) {
-  return platform === 'win32' ? 'wobb-engine.exe' : 'wobb-engine';
+  return platform === 'win32' ? 'vpn-client-engine.exe' : 'vpn-client-engine';
 }
 
 function main() {

@@ -7,7 +7,7 @@ let isQuitting = false;
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:5173';
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
-const wobbState = {
+const vpnClientState = {
   state: 'idle',
   pid: null,
   binaryPath: null,
@@ -40,9 +40,9 @@ function sendToRenderer(channel, payload) {
   }
 }
 
-function updateWobbState(patch) {
-  Object.assign(wobbState, patch);
-  sendToRenderer('wobb:status', { ...wobbState });
+function updateVpnClientState(patch) {
+  Object.assign(vpnClientState, patch);
+  sendToRenderer('vpn-client:status', { ...vpnClientState });
 }
 
 function pushLog(message, level = 'info', stream = 'system') {
@@ -62,7 +62,7 @@ function pushLog(message, level = 'info', stream = 'system') {
     console.log(`[${stream}] ${entry.message}`);
   }
 
-  sendToRenderer('wobb:log', entry);
+  sendToRenderer('vpn-client:log', entry);
 }
 
 const engine = new XrayManager({
@@ -75,7 +75,7 @@ const engine = new XrayManager({
 });
 
 engine.on('started', (status) => {
-  updateWobbState({
+  updateVpnClientState({
     state: 'connected',
     pid: status.pid,
     binaryPath: status.binaryPath,
@@ -97,7 +97,7 @@ engine.on('stderr', (line) => {
 });
 
 engine.on('exit', ({ code, signal, manualStop }) => {
-  updateWobbState({
+  updateVpnClientState({
     state: 'idle',
     pid: null,
     configPath: null,
@@ -107,7 +107,7 @@ engine.on('exit', ({ code, signal, manualStop }) => {
 });
 
 engine.on('error', (error) => {
-  updateWobbState({
+  updateVpnClientState({
     state: 'error',
     pid: null,
     configPath: null,
@@ -125,7 +125,7 @@ function createWindow() {
     minWidth: 1040,
     minHeight: 720,
     backgroundColor: '#0b1220',
-    title: 'Wobb',
+    title: 'VPN Client',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -157,7 +157,7 @@ function createWindow() {
   });
 }
 
-ipcMain.handle('wobb:start', async (_event, payload = {}) => {
+ipcMain.handle('vpn-client:start', async (_event, payload = {}) => {
   const stealthMode = Boolean(payload.stealthMode);
   const profile = payload.profile && typeof payload.profile === 'object' ? payload.profile : null;
 
@@ -186,7 +186,7 @@ ipcMain.handle('wobb:start', async (_event, payload = {}) => {
     throw new Error('Desktop VPN mode is not wired in this Windows runtime yet. Use Proxy mode for real local testing.');
   }
 
-  updateWobbState({
+  updateVpnClientState({
     state: 'connecting',
     stealthMode,
     error: null,
@@ -205,7 +205,7 @@ ipcMain.handle('wobb:start', async (_event, payload = {}) => {
   try {
     const status = await engine.startXray(config);
 
-    updateWobbState({
+    updateVpnClientState({
       state: 'connected',
       pid: status.pid,
       binaryPath: status.binaryPath,
@@ -217,9 +217,9 @@ ipcMain.handle('wobb:start', async (_event, payload = {}) => {
       error: null,
     });
 
-    return { ok: true, status: { ...wobbState } };
+    return { ok: true, status: { ...vpnClientState } };
   } catch (error) {
-    updateWobbState({
+    updateVpnClientState({
       state: 'error',
       pid: null,
       configPath: null,
@@ -233,8 +233,8 @@ ipcMain.handle('wobb:start', async (_event, payload = {}) => {
   }
 });
 
-ipcMain.handle('wobb:stop', async () => {
-  updateWobbState({
+ipcMain.handle('vpn-client:stop', async () => {
+  updateVpnClientState({
     state: 'disconnecting',
     error: null,
   });
@@ -244,7 +244,7 @@ ipcMain.handle('wobb:stop', async () => {
   try {
     const stopped = await engine.stopXray();
 
-    updateWobbState({
+    updateVpnClientState({
       state: 'idle',
       pid: null,
       configPath: null,
@@ -252,9 +252,9 @@ ipcMain.handle('wobb:stop', async () => {
       error: null,
     });
 
-    return { ok: true, stopped, status: { ...wobbState } };
+    return { ok: true, stopped, status: { ...vpnClientState } };
   } catch (error) {
-    updateWobbState({
+    updateVpnClientState({
       state: 'error',
       error: error.message,
     });
@@ -264,16 +264,16 @@ ipcMain.handle('wobb:stop', async () => {
   }
 });
 
-ipcMain.handle('wobb:get-status', async () => {
-  return { ...wobbState };
+ipcMain.handle('vpn-client:get-status', async () => {
+  return { ...vpnClientState };
 });
 
-ipcMain.handle('wobb:copy-text', async (_event, text = '') => {
+ipcMain.handle('vpn-client:copy-text', async (_event, text = '') => {
   clipboard.writeText(String(text));
   return true;
 });
 
-ipcMain.handle('wobb:read-text', async () => {
+ipcMain.handle('vpn-client:read-text', async () => {
   return clipboard.readText();
 });
 
@@ -287,7 +287,7 @@ app.whenReady().then(() => {
     }
   });
 
-  updateWobbState({
+  updateVpnClientState({
     binaryPath: engine.binaryPath,
   });
 

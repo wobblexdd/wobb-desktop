@@ -33,12 +33,12 @@ class XrayManager extends EventEmitter {
       case 'linux':
         return 'linux';
       default:
-        throw new Error(`Unsupported platform for Wobb engine: ${platform}`);
+        throw new Error(`Unsupported platform for VPN Client engine: ${platform}`);
     }
   }
 
   static getBinaryName(platform = process.platform) {
-    return platform === 'win32' ? 'wobb-engine.exe' : 'wobb-engine';
+    return platform === 'win32' ? 'vpn-client-engine.exe' : 'vpn-client-engine';
   }
 
   static createBasicVlessConfig(options = {}, enableStealth = options.stealthMode ?? false) {
@@ -63,26 +63,26 @@ class XrayManager extends EventEmitter {
     } = options;
 
     if (!String(serverAddress || '').trim()) {
-      throw new Error('Wobb profile is missing a server address.');
+      throw new Error('VPN Client profile is missing a server address.');
     }
 
     if (!String(uuid || '').trim()) {
-      throw new Error('Wobb profile is missing a UUID.');
+      throw new Error('VPN Client profile is missing a UUID.');
     }
 
     if (!Number.isInteger(Number(serverPort)) || Number(serverPort) < 1 || Number(serverPort) > 65535) {
-      throw new Error('Wobb profile has an invalid server port.');
+      throw new Error('VPN Client profile has an invalid server port.');
     }
 
     if (security === 'reality') {
       if (!String(serverName || '').trim()) {
-        throw new Error('Wobb profile is missing a REALITY server name.');
+        throw new Error('VPN Client profile is missing a REALITY server name.');
       }
       if (!String(publicKey || '').trim()) {
-        throw new Error('Wobb profile is missing a REALITY public key.');
+        throw new Error('VPN Client profile is missing a REALITY public key.');
       }
       if (!String(shortId || '').trim()) {
-        throw new Error('Wobb profile is missing a REALITY short ID.');
+        throw new Error('VPN Client profile is missing a REALITY short ID.');
       }
     }
 
@@ -266,7 +266,7 @@ class XrayManager extends EventEmitter {
     }
 
     throw new Error(
-      `Wobb engine not found. Expected one of:\n${Array.from(candidates)
+      `VPN Client engine not found. Expected one of:\n${Array.from(candidates)
         .map((candidate) => `- ${candidate}`)
         .join('\n')}`
     );
@@ -274,7 +274,7 @@ class XrayManager extends EventEmitter {
 
   assertBinaryExists(binaryPath) {
     if (!fs.existsSync(binaryPath)) {
-      throw new Error(`Wobb engine does not exist: ${binaryPath}`);
+      throw new Error(`VPN Client engine does not exist: ${binaryPath}`);
     }
 
     const accessMode =
@@ -286,9 +286,9 @@ class XrayManager extends EventEmitter {
   }
 
   createRuntimeFiles(configObject, binaryPath) {
-    const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wobb-runtime-'));
+    const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vpn-client-runtime-'));
     const xrayConfigPath = path.join(runtimeDir, 'xray-config.json');
-    const wrapperConfigPath = path.join(runtimeDir, 'wobb-runtime.json');
+    const wrapperConfigPath = path.join(runtimeDir, 'vpn-client-runtime.json');
 
     this.socksPort = Number(configObject?.inbounds?.find((entry) => entry?.tag === 'socks-in')?.port || 10808);
     this.httpPort = Number(configObject?.inbounds?.find((entry) => entry?.tag === 'http-in')?.port || 10809);
@@ -324,7 +324,7 @@ class XrayManager extends EventEmitter {
     try {
       fs.rmSync(this.runtimeDir, { recursive: true, force: true });
     } catch (error) {
-      this.logger.warn?.('[WobbManager] Failed to remove runtime directory:', error);
+      this.logger.warn?.('[VpnClientManager] Failed to remove runtime directory:', error);
     } finally {
       this.runtimeDir = null;
       this.wrapperConfigPath = null;
@@ -334,7 +334,7 @@ class XrayManager extends EventEmitter {
 
   async startXray(configJson) {
     if (this.isRunning()) {
-      throw new Error('Wobb engine is already running.');
+      throw new Error('VPN Client engine is already running.');
     }
 
     const binaryPath = this.resolveBinaryPath();
@@ -342,7 +342,7 @@ class XrayManager extends EventEmitter {
     const { wrapperConfigPath } = this.createRuntimeFiles(configObject, binaryPath);
     const args = ['-configPath', wrapperConfigPath];
 
-    this.logger.info?.(`[WobbManager] Starting engine: ${binaryPath} ${args.join(' ')}`);
+    this.logger.info?.(`[VpnClientManager] Starting engine: ${binaryPath} ${args.join(' ')}`);
 
     this.manualStop = false;
 
@@ -383,8 +383,8 @@ class XrayManager extends EventEmitter {
       this.attachLogStream(this.child.stderr, 'stderr', 'warn');
 
       this.child.once('spawn', () => {
-        this.logger.info?.(`[WobbManager] Engine started with PID ${this.child.pid}`);
-        this.logger.info?.(`[WobbManager] Local proxies: socks=127.0.0.1:${this.socksPort} http=127.0.0.1:${this.httpPort}`);
+        this.logger.info?.(`[VpnClientManager] Engine started with PID ${this.child.pid}`);
+        this.logger.info?.(`[VpnClientManager] Local proxies: socks=127.0.0.1:${this.socksPort} http=127.0.0.1:${this.httpPort}`);
         startupTimer = setTimeout(() => {
           if (this.child && !this.child.killed) {
             settleResolve();
@@ -393,7 +393,7 @@ class XrayManager extends EventEmitter {
       });
 
       this.child.once('error', (error) => {
-        this.logger.error?.('[WobbManager] Failed to start engine process:', error);
+        this.logger.error?.('[VpnClientManager] Failed to start engine process:', error);
         this.child = null;
         this.cleanupRuntimeFiles();
         this.emit('error', error);
@@ -405,11 +405,11 @@ class XrayManager extends EventEmitter {
         const exitInfo = { code, signal, manualStop: wasManualStop };
 
         this.logger.warn?.(
-          `[WobbManager] Engine exited with code=${code} signal=${signal || 'none'} manualStop=${wasManualStop}`
+          `[VpnClientManager] Engine exited with code=${code} signal=${signal || 'none'} manualStop=${wasManualStop}`
         );
 
         const startupError = !startupSettled && !wasManualStop
-          ? new Error(`Wobb engine exited during startup (code=${code}, signal=${signal || 'none'}).`)
+          ? new Error(`VPN Client engine exited during startup (code=${code}, signal=${signal || 'none'}).`)
           : null;
 
         this.child = null;
@@ -432,7 +432,7 @@ class XrayManager extends EventEmitter {
     const child = this.child;
     this.manualStop = true;
 
-    this.logger.info?.(`[WobbManager] Stopping engine PID ${child.pid}`);
+    this.logger.info?.(`[VpnClientManager] Stopping engine PID ${child.pid}`);
 
     return new Promise((resolve) => {
       let settled = false;
@@ -451,7 +451,7 @@ class XrayManager extends EventEmitter {
       try {
         child.kill('SIGTERM');
       } catch (error) {
-        this.logger.error?.('[WobbManager] Failed to send SIGTERM to engine:', error);
+        this.logger.error?.('[VpnClientManager] Failed to send SIGTERM to engine:', error);
         finish(false);
         return;
       }
@@ -463,13 +463,13 @@ class XrayManager extends EventEmitter {
         }
 
         this.logger.warn?.(
-          `[WobbManager] Engine did not stop within ${this.stopTimeoutMs}ms, forcing termination`
+          `[VpnClientManager] Engine did not stop within ${this.stopTimeoutMs}ms, forcing termination`
         );
 
         try {
           child.kill('SIGKILL');
         } catch (error) {
-          this.logger.error?.('[WobbManager] Failed to force-kill engine:', error);
+          this.logger.error?.('[VpnClientManager] Failed to force-kill engine:', error);
           finish(false);
         }
       }, this.stopTimeoutMs).unref();
@@ -487,7 +487,7 @@ class XrayManager extends EventEmitter {
     }
 
     if (!configJson || typeof configJson !== 'object' || Array.isArray(configJson)) {
-      throw new Error('Wobb config must be a JSON object or a JSON string.');
+      throw new Error('VPN Client config must be a JSON object or a JSON string.');
     }
 
     return configJson;
@@ -501,14 +501,14 @@ class XrayManager extends EventEmitter {
     const hadBrandHit = brandPattern.test(scrubbed);
     brandPattern.lastIndex = 0;
 
-    scrubbed = scrubbed.replace(brandPattern, '[Wobb Core]');
-    scrubbed = scrubbed.replace(bannerPattern, '[Wobb Core]');
+    scrubbed = scrubbed.replace(brandPattern, '[VPN Client Core]');
+    scrubbed = scrubbed.replace(bannerPattern, '[VPN Client Core]');
 
     if (hadBrandHit) {
-      scrubbed = scrubbed.replace(/\b(?:go\d+\.\d+(?:\.\d+)?|v?\d+\.\d+\.\d+(?:\.\d+)?)\b/gi, '[Wobb Core]');
+      scrubbed = scrubbed.replace(/\b(?:go\d+\.\d+(?:\.\d+)?|v?\d+\.\d+\.\d+(?:\.\d+)?)\b/gi, '[VPN Client Core]');
     }
 
-    return scrubbed.replace(/\[Wobb Core\](?:\s+\[Wobb Core\])+/g, '[Wobb Core]');
+    return scrubbed.replace(/\[VPN Client Core\](?:\s+\[VPN Client Core\])+/g, '[VPN Client Core]');
   }
 
   attachLogStream(stream, label, methodName) {
@@ -531,7 +531,7 @@ class XrayManager extends EventEmitter {
 
         const scrubbedLine = this.scrubLogs(line);
         const loggerMethod = this.logger[methodName] || this.logger.log || console.log;
-        loggerMethod.call(this.logger, `[WOBB ${label}] ${scrubbedLine}`);
+        loggerMethod.call(this.logger, `[VPN Client ${label}] ${scrubbedLine}`);
         this.emit(label, scrubbedLine);
       }
     });
@@ -543,7 +543,7 @@ class XrayManager extends EventEmitter {
 
       const scrubbedBuffer = this.scrubLogs(buffer);
       const loggerMethod = this.logger[methodName] || this.logger.log || console.log;
-      loggerMethod.call(this.logger, `[WOBB ${label}] ${scrubbedBuffer}`);
+      loggerMethod.call(this.logger, `[VPN Client ${label}] ${scrubbedBuffer}`);
       this.emit(label, scrubbedBuffer);
     });
   }
